@@ -29,6 +29,18 @@ export async function generateSentence(language: string, term: string, translati
   );
 }
 
+/** Transcribe a voice-note reply (WhatsApp/MMS audio) in the target language. */
+export async function transcribeAudio(audio: ArrayBuffer, contentType: string, language: string): Promise<string> {
+  const ext = contentType.includes("ogg") ? "ogg" : contentType.includes("mp4") ? "mp4" : contentType.includes("wav") ? "wav" : "mp3";
+  const file = new File([audio], `reply.${ext}`, { type: contentType });
+  const res = await openai.audio.transcriptions.create({
+    model: process.env.OPENAI_TRANSCRIBE_MODEL ?? "whisper-1",
+    file,
+    language,
+  });
+  return res.text.trim();
+}
+
 export type GradedAnswer = { correct: boolean; feedback: string };
 
 /**

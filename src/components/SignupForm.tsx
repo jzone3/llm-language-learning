@@ -4,6 +4,7 @@ import { useState } from "react";
 
 export function SignupForm() {
   const [phone, setPhone] = useState("");
+  const [channel, setChannel] = useState<"sms" | "whatsapp">("sms");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"phone" | "code" | "done">("phone");
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +21,7 @@ export function SignupForm() {
         body: JSON.stringify({
           phone,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          channel,
         }),
       });
       const data = await res.json();
@@ -61,7 +63,26 @@ export function SignupForm() {
   }
 
   return (
-    <form onSubmit={stage === "phone" ? submitPhone : submitCode} className="flex flex-col sm:flex-row gap-3">
+    <form onSubmit={stage === "phone" ? submitPhone : submitCode} className="flex flex-col gap-3">
+      {stage === "phone" && (
+        <div className="flex gap-2">
+          {(["sms", "whatsapp"] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setChannel(c)}
+              className={`rounded-xl border px-4 py-2 text-sm font-medium ${
+                channel === c
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-500"
+              }`}
+            >
+              {c === "sms" ? "Text (SMS)" : "WhatsApp"}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-col sm:flex-row gap-3">
       {stage === "phone" ? (
         <input
           type="tel"
@@ -88,8 +109,14 @@ export function SignupForm() {
         disabled={loading}
         className="rounded-xl bg-neutral-900 px-6 py-3 text-base font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
       >
-        {loading ? "..." : stage === "phone" ? "Text me" : "Verify"}
+        {loading ? "..." : stage === "phone" ? (channel === "whatsapp" ? "Message me" : "Text me") : "Verify"}
       </button>
+      </div>
+      {stage === "phone" && channel === "whatsapp" && (
+        <p className="text-sm text-neutral-500">
+          You can reply by text or voice note on WhatsApp — we&apos;ll grade either.
+        </p>
+      )}
       {error && <p className="text-sm text-red-600 sm:w-full">{error}</p>}
     </form>
   );

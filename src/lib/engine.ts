@@ -2,7 +2,7 @@ import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { review, Rating } from "./fsrs";
 import { generateSentence, gradeAnswers, optimizeCadence } from "./llm";
-import { sendSms } from "./sms";
+import { sendSms, type Channel } from "./sms";
 import { LANGUAGE_NAMES } from "./words";
 
 export type QuizItem = { cardId: string; prompt: string; answer: string };
@@ -80,7 +80,14 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
 
   const streakBit = user.streak >= 2 ? ` 🔥${user.streak}` : "";
   const body = `☀️ VocabText${streakBit}\n${lines.join("\n")}`;
-  const message = await sendSms({ userId: user.id, to: user.phone, body, kind: "quiz", quizItems });
+  const message = await sendSms({
+    userId: user.id,
+    to: user.phone,
+    body,
+    kind: "quiz",
+    channel: user.channel as Channel,
+    quizItems,
+  });
 
   // Persist new-word cards only after the SMS is confirmed sent, so an
   // undelivered lesson doesn't consume words the user never saw.

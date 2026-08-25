@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { handleReply } from "@/lib/engine";
-import { validateTwilioSignature } from "@/lib/sms";
+import { validateTwilioSignature, fetchTwilioMedia } from "@/lib/sms";
+import { transcribeAudio } from "@/lib/llm";
 
 function twiml(message: string) {
   const escaped = message
@@ -31,12 +32,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const from = params.From;
-  const body = (params.Body ?? "").trim();
+  const from = (params.From ?? "").replace(/^whatsapp:/, "");
+  let body = (params.Body ?? "").trim();
   if (!from) return emptyTwiml();
 
   const user = await prisma.user.findUnique({ where: { phone: from } });
   if (!user) return emptyTwiml();
+
+  // Voice-note reply (WhatsApp audio / MMS): transcribe, then grade the transcript.
+  if (!body && Number(params.NumMedia ?? "0") > 0 && (params.MediaContentType0 ?? "").startsWith("audio")) {
+    try {
+      const media = await fetchTwilioMedia(params.MediaUrl0);
+      body = await transcribeAudio(media.data, media.contentType, user.language);
+    } catch (err) {
+      console.error("voice transcription failed", err);
+      return twiml("Couldn't process that voice note — try again or reply by text. 🎙️");
+    }
+    if (!body) return twiml("Couldn't hear anything in that voice note — try again or reply by text. 🎙️");
+  }
 
   const upper = body.toUpperCase();
   if (["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"].includes(upper)) {

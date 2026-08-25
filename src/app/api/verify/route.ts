@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { sendLesson } from "@/lib/engine";
-import { sendSms } from "@/lib/sms";
+import { sendSms, type Channel } from "@/lib/sms";
 
 const bodySchema = z.object({
   phone: z.string(),
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       to: user.phone,
       body: "🎉 You're in! Here's your first lesson — reply to tomorrow morning's quiz to build your streak.",
       kind: "other",
+      channel: user.channel as Channel,
     });
     await sendLesson(verifiedUser, { includeNewWords: true });
   }

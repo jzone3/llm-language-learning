@@ -6,6 +6,7 @@ import { sendSms } from "@/lib/sms";
 const bodySchema = z.object({
   phone: z.string().regex(/^\+[1-9]\d{7,14}$/, "Use E.164 format, e.g. +14155551234"),
   timezone: z.string().min(1),
+  channel: z.enum(["sms", "whatsapp"]).default("sms"),
 });
 
 export async function POST(request: NextRequest) {
@@ -13,14 +14,14 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
-  const { phone, timezone } = parsed.data;
+  const { phone, timezone, channel } = parsed.data;
 
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const expires = new Date(Date.now() + 10 * 60_000);
   const user = await prisma.user.upsert({
     where: { phone },
-    create: { phone, timezone, verifyCode: code, verifyExpiresAt: expires },
-    update: { timezone, verifyCode: code, verifyExpiresAt: expires, verifyAttempts: 0, optedOut: false },
+    create: { phone, timezone, channel, verifyCode: code, verifyExpiresAt: expires },
+    update: { timezone, channel, verifyCode: code, verifyExpiresAt: expires, verifyAttempts: 0, optedOut: false },
   });
 
   try {
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       to: phone,
       body: `VocabText code: ${code}\n\nReply STOP anytime to unsubscribe.`,
       kind: "verify",
+      channel,
     });
   } catch (err) {
     console.error("verify SMS failed", err);

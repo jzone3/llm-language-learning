@@ -12,6 +12,7 @@ model User {
   phone           String    @unique
   name            String?
   language        String    @default("es")
+  channel         String    @default("sms") // "sms" | "whatsapp"
   timezone        String    @default("America/Los_Angeles")
   // Cadence
   sendHour        Int       @default(8) // local hour for the morning message
