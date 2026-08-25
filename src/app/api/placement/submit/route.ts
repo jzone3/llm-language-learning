@@ -7,23 +7,28 @@ import { sendWhatsApp } from "@/lib/whatsapp";
 
 const bodySchema = z.object({
   phone: z.string(),
+  token: z.string().min(1),
   answers: z.array(z.object({ wordId: z.string(), response: z.string() })),
 });
 
 export async function POST(request: NextRequest) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) return Response.json({ error: "Invalid request" }, { status: 400 });
-  const { phone, answers } = parsed.data;
+  const { phone, token, answers } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { phone } });
-  if (!user?.verified) return Response.json({ error: "Not verified" }, { status: 403 });
+  if (!user?.verified || !user.placementToken || user.placementToken !== token) {
+    return Response.json({ error: "Not authorized" }, { status: 403 });
+  }
   if (user.placementDone) return Response.json({ ok: true, level: user.level });
 
   const attempted = answers.filter((a) => a.response.trim().length > 0);
   let knownWordIds: string[] = [];
 
   if (attempted.length > 0) {
-    const words = await prisma.word.findMany({ where: { id: { in: attempted.map((a) => a.wordId) } } });
+    const words = await prisma.word.findMany({
+      where: { id: { in: attempted.map((a) => a.wordId) }, language: user.language },
+    });
     const items = attempted.flatMap((a) => {
       const w = words.find((x) => x.id === a.wordId);
       return w ? [{ term: w.term, translation: w.translation, response: a.response, wordId: w.id }] : [];
@@ -58,7 +63,7 @@ export async function POST(request: NextRequest) {
 
   const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { placementDone: true, level },
+    data: { placementDone: true, level, placementToken: null },
   });
 
   try {

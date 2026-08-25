@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-
+import crypto from "crypto";
 
 const bodySchema = z.object({
   phone: z.string(),
@@ -30,11 +30,19 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Wrong code" }, { status: 400 });
   }
 
+  // Single-use token authorizing the website placement flow for this browser.
+  const placementToken = crypto.randomBytes(24).toString("hex");
   const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { verified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0 },
+    data: {
+      verified: true,
+      verifyCode: null,
+      verifyExpiresAt: null,
+      verifyAttempts: 0,
+      placementToken,
+    },
   });
 
   // The first lesson is sent after the placement test (or when it's skipped).
-  return Response.json({ ok: true, placementDone: updated.placementDone });
+  return Response.json({ ok: true, placementDone: updated.placementDone, placementToken });
 }

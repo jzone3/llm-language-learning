@@ -15,6 +15,7 @@ export function SignupForm() {
   const [items, setItems] = useState<PlacementItem[]>([]);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [level, setLevel] = useState<string | null>(null);
+  const [token, setToken] = useState("");
 
   async function post(url: string, body: unknown) {
     const res = await fetch(url, {
@@ -51,13 +52,15 @@ export function SignupForm() {
     setLoading(true);
     try {
       const data = await post("/api/verify", { phone, code });
+      setToken(data.placementToken ?? "");
       if (data.placementDone) {
         setStage("done");
       } else {
-        const start = await post("/api/placement/start", { phone });
+        const start = await post("/api/placement/start", { phone, token: data.placementToken });
         setItems(start.items);
         setStage(start.items.length > 0 ? "placement" : "done");
-        if (start.items.length === 0) await post("/api/placement/submit", { phone, answers: [] });
+        if (start.items.length === 0)
+          await post("/api/placement/submit", { phone, token: data.placementToken, answers: [] });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -72,6 +75,7 @@ export function SignupForm() {
     try {
       const data = await post("/api/placement/submit", {
         phone,
+        token,
         answers: skip
           ? []
           : items.map((it) => ({ wordId: it.wordId, response: responses[it.wordId] ?? "" })),

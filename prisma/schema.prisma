@@ -29,6 +29,7 @@ model User {
   // Placement + personalization
   level           String    @default("beginner") // "beginner" | "intermediate" | "advanced"
   placementDone   Boolean   @default(false)
+  placementToken  String?
   wordQueue       String? // JSON array of word ids picked by the weekly LLM word picker
   createdAt       DateTime  @default(now())
   cards           Card[]

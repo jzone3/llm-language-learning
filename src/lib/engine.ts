@@ -236,7 +236,9 @@ export async function handleReply(user: User, text: string): Promise<string> {
 
 /** Called hourly by cron: send due lessons and periodically re-optimize cadence. */
 export async function runHourlyTick() {
-  const users = await prisma.user.findMany({ where: { verified: true, optedOut: false } });
+  const users = await prisma.user.findMany({
+    where: { verified: true, optedOut: false, placementDone: true },
+  });
   const results: { userId: string; action: string }[] = [];
 
   for (const user of users) {

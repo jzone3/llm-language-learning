@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 
-const bodySchema = z.object({ phone: z.string() });
+const bodySchema = z.object({ phone: z.string(), token: z.string().min(1) });
 
 const PLACEMENT_ITEMS = 12;
 
@@ -12,7 +12,9 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return Response.json({ error: "Invalid request" }, { status: 400 });
 
   const user = await prisma.user.findUnique({ where: { phone: parsed.data.phone } });
-  if (!user?.verified) return Response.json({ error: "Not verified" }, { status: 403 });
+  if (!user?.verified || !user.placementToken || user.placementToken !== parsed.data.token) {
+    return Response.json({ error: "Not authorized" }, { status: 403 });
+  }
 
   const words = await prisma.word.findMany({
     where: { language: user.language },

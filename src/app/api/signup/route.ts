@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { sendWhatsApp } from "@/lib/whatsapp";
+import { sendVerifyCode } from "@/lib/whatsapp";
 import { LANGUAGES } from "@/lib/words";
 
 const bodySchema = z.object({
@@ -26,12 +26,7 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    await sendWhatsApp({
-      userId: user.id,
-      to: phone,
-      body: `VocabText code: ${code}\n\nReply STOP anytime to unsubscribe.`,
-      kind: "verify",
-    });
+    await sendVerifyCode({ userId: user.id, to: phone, code });
   } catch (err) {
     console.error("verify message failed", err);
     return Response.json(

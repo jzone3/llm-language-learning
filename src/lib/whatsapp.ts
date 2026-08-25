@@ -44,6 +44,57 @@ export async function sendWhatsApp(params: {
   });
 }
 
+/**
+ * Send the verification code via an approved authentication template when
+ * WHATSAPP_VERIFY_TEMPLATE is set. Business-initiated messages to numbers with no
+ * open 24h window (i.e. every first-contact verification) require a template in
+ * production; plain text works with Meta test numbers in dev.
+ */
+export async function sendVerifyCode(params: { userId: string; to: string; code: string }) {
+  const template = process.env.WHATSAPP_VERIFY_TEMPLATE;
+  if (!template) {
+    return sendWhatsApp({
+      userId: params.userId,
+      to: params.to,
+      body: `VocabText code: ${params.code}\n\nReply STOP anytime to unsubscribe.`,
+      kind: "verify",
+    });
+  }
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: params.to.replace(/^\+/, ""),
+      type: "template",
+      template: {
+        name: template,
+        language: { code: "en" },
+        components: [
+          { type: "body", parameters: [{ type: "text", text: params.code }] },
+          {
+            type: "button",
+            sub_type: "url",
+            index: "0",
+            parameters: [{ type: "text", text: params.code }],
+          },
+        ],
+      },
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`WhatsApp verify template send failed: ${res.status} ${detail}`);
+  }
+  return prisma.message.create({
+    data: { userId: params.userId, direction: "out", kind: "verify", body: "(verification template)" },
+  });
+}
+
 /** Download an inbound media file (e.g. a voice note) by its Cloud API media id. */
 export async function fetchWhatsAppMedia(mediaId: string): Promise<{ data: ArrayBuffer; contentType: string }> {
   const metaRes = await fetch(`${GRAPH_BASE}/${mediaId}`, {
@@ -64,10 +115,7 @@ export function validateWebhookSignature(rawBody: string, signatureHeader: strin
   const secret = process.env.WHATSAPP_APP_SECRET;
   if (!secret) return false;
   if (!signatureHeader?.startsWith("sha256=")) return false;
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  const given = signatureHeader.slice("sha256=".length);
-  return (
-    expected.length === given.length &&
-    crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(given, "hex"))
-  );
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest();
+  const given = Buffer.from(signatureHeader.slice("sha256=".length), "hex");
+  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
