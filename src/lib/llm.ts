@@ -44,6 +44,44 @@ export async function transcribeAudio(audio: ArrayBuffer, contentType: string, l
 export type GradedAnswer = { correct: boolean; feedback: string };
 
 /**
+ * Grade the website placement test: the learner saw target-language items and
+ * typed English meanings (or left them blank). Lenient like quiz grading.
+ */
+export async function gradePlacement(
+  language: string,
+  items: { term: string; translation: string; response: string }[]
+): Promise<boolean[]> {
+  const schema = z.object({ known: z.array(z.boolean()) });
+  const out = await jsonCall(
+    schema,
+    `You grade a ${LANGUAGE_NAMES[language] ?? language} placement test. For each item the learner saw the ${LANGUAGE_NAMES[language] ?? language} term and typed its English meaning. Mark it known (true) if the response shows they understand the word — accept typos, partial meanings, and synonyms. Empty or wrong responses are false. Return JSON {"known": [bool, ...]} with exactly one boolean per item, in order.`,
+    JSON.stringify(items)
+  );
+  return items.map((_, i) => out.known[i] ?? false);
+}
+
+/**
+ * Weekly word picker: given the learner's recent performance, choose which
+ * unseen items they should learn next week (words, phrases, slang).
+ */
+export async function pickNextWords(input: {
+  language: string;
+  level: string;
+  performance: { term: string; translation: string; kind: string; lapses: number; reps: number }[];
+  candidates: { id: string; term: string; translation: string; kind: string; rank: number }[];
+  count: number;
+}): Promise<string[]> {
+  const schema = z.object({ wordIds: z.array(z.string()) });
+  const out = await jsonCall(
+    schema,
+    `You pick next week's vocabulary for a ${LANGUAGE_NAMES[input.language] ?? input.language} learner at ${input.level} level. Choose ${input.count} item ids from the candidates, ordered easiest-first. Mix words with phrases and slang. Prefer items related to ones the learner struggled with (high lapses) so they reinforce each other, and generally respect frequency rank. Return JSON {"wordIds": ["id", ...]} using only ids from the candidates.`,
+    JSON.stringify({ performance: input.performance, candidates: input.candidates })
+  );
+  const valid = new Set(input.candidates.map((c) => c.id));
+  return out.wordIds.filter((id) => valid.has(id)).slice(0, input.count);
+}
+
+/**
  * Grade a learner's free-text answers to a vocab quiz.
  * Lenient: accept typos, missing accents, close synonyms.
  */
@@ -57,7 +95,7 @@ export async function gradeAnswers(
   });
   const out = await jsonCall(
     schema,
-    `You grade a ${LANGUAGE_NAMES[language] ?? language} vocabulary quiz answered over SMS. Be lenient: accept typos, missing accents, and reasonable synonyms. The learner may answer in order, separated by commas/newlines/numbers, or answer only some items. For each quiz item return {"correct": bool, "feedback": "<= 8 words, e.g. '✓' or 'close: it's X'"}. If an item wasn't answered, mark it incorrect with feedback "no answer". Return JSON {"results": [...]} with exactly one result per item, in order.`,
+    `You grade a ${LANGUAGE_NAMES[language] ?? language} vocabulary quiz answered over WhatsApp. Be lenient: accept typos, missing accents, romanized transliterations of non-Latin scripts, and reasonable synonyms. The learner may answer in order, separated by commas/newlines/numbers, or answer only some items. For each quiz item return {"correct": bool, "feedback": "<= 8 words, e.g. '✓' or 'close: it's X'"}. If an item wasn't answered, mark it incorrect with feedback "no answer". Return JSON {"results": [...]} with exactly one result per item, in order.`,
     JSON.stringify({ quiz: items, learner_reply: userReply })
   );
   // Ensure one result per item even if the model misbehaves.

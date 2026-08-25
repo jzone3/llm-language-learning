@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { sendLesson } from "@/lib/engine";
-import { sendSms, type Channel } from "@/lib/sms";
+
 
 const bodySchema = z.object({
   phone: z.string(),
@@ -31,22 +30,11 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Wrong code" }, { status: 400 });
   }
 
-  const wasVerified = user.verified;
-  const verifiedUser = await prisma.user.update({
+  const updated = await prisma.user.update({
     where: { id: user.id },
     data: { verified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0 },
   });
 
-  if (!wasVerified) {
-    await sendSms({
-      userId: user.id,
-      to: user.phone,
-      body: "🎉 You're in! Here's your first lesson — reply to tomorrow morning's quiz to build your streak.",
-      kind: "other",
-      channel: user.channel as Channel,
-    });
-    await sendLesson(verifiedUser, { includeNewWords: true });
-  }
-
-  return Response.json({ ok: true });
+  // The first lesson is sent after the placement test (or when it's skipped).
+  return Response.json({ ok: true, placementDone: updated.placementDone });
 }
