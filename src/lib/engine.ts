@@ -1,8 +1,8 @@
 import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { review, Rating } from "./fsrs";
-import { generateSentence, gradeAnswers, optimizeCadence } from "./llm";
-import { sendSms, type Channel } from "./sms";
+import { generateSentence, gradeAnswers, optimizeCadence, pickNextWords } from "./llm";
+import { sendWhatsApp } from "./whatsapp";
 import { LANGUAGE_NAMES } from "./words";
 
 export type QuizItem = { cardId: string; prompt: string; answer: string };
@@ -47,7 +47,7 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
   const quizItems: QuizItem[] = dueCards.map((c) => ({
     cardId: c.id,
     prompt: `"${c.word.translation}" in ${LANGUAGE_NAMES[user.language] ?? user.language}?`,
-    answer: c.word.term,
+    answer: c.word.transliteration ? `${c.word.term} (${c.word.transliteration})` : c.word.term,
   }));
 
   const lines: string[] = [];
@@ -58,18 +58,14 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
 
   const newWordIds: string[] = [];
   if (opts.includeNewWords) {
-    const seen = await prisma.card.findMany({ where: { userId: user.id }, select: { wordId: true } });
-    const newWords = await prisma.word.findMany({
-      where: { language: user.language, id: { notIn: seen.map((s) => s.wordId) } },
-      orderBy: { rank: "asc" },
-      take: user.newWordsPerDay,
-    });
+    const newWords = await selectNewWords(user);
     if (newWords.length > 0) {
       lines.push("");
       lines.push(newWords.length === 1 ? "New word:" : "New words:");
       for (const w of newWords) {
         const { sentence, sentence_en } = await generateSentence(user.language, w.term, w.translation);
-        lines.push(`• ${w.term} = ${w.translation}`);
+        const translit = w.transliteration ? ` (${w.transliteration})` : "";
+        lines.push(`• ${w.term}${translit} = ${w.translation}`);
         lines.push(`  "${sentence}" (${sentence_en})`);
         newWordIds.push(w.id);
       }
@@ -80,16 +76,15 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
 
   const streakBit = user.streak >= 2 ? ` 🔥${user.streak}` : "";
   const body = `☀️ VocabText${streakBit}\n${lines.join("\n")}`;
-  const message = await sendSms({
+  const message = await sendWhatsApp({
     userId: user.id,
     to: user.phone,
     body,
     kind: "quiz",
-    channel: user.channel as Channel,
     quizItems,
   });
 
-  // Persist new-word cards only after the SMS is confirmed sent, so an
+  // Persist new-word cards only after the message is confirmed sent, so an
   // undelivered lesson doesn't consume words the user never saw.
   for (const wordId of newWordIds) {
     await prisma.card.create({
@@ -121,7 +116,70 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
   return message;
 }
 
-/** Handle an inbound SMS reply: grade, update FSRS + streak, respond. */
+/** Pick today's new items: prefer the weekly LLM-chosen queue, fall back to frequency order. */
+async function selectNewWords(user: User) {
+  const seen = await prisma.card.findMany({ where: { userId: user.id }, select: { wordId: true } });
+  const seenIds = new Set(seen.map((s) => s.wordId));
+
+  const queue: string[] = user.wordQueue ? JSON.parse(user.wordQueue) : [];
+  const queuedUnseen = queue.filter((id) => !seenIds.has(id));
+  if (queuedUnseen.length > 0) {
+    const words = await prisma.word.findMany({ where: { id: { in: queuedUnseen.slice(0, user.newWordsPerDay) } } });
+    // Preserve queue order.
+    return queuedUnseen
+      .slice(0, user.newWordsPerDay)
+      .map((id) => words.find((w) => w.id === id))
+      .filter((w): w is NonNullable<typeof w> => Boolean(w));
+  }
+
+  return prisma.word.findMany({
+    where: { language: user.language, id: { notIn: [...seenIds] } },
+    orderBy: { rank: "asc" },
+    take: user.newWordsPerDay,
+  });
+}
+
+/** Weekly: have the LLM pick next week's new items based on recent performance. */
+export async function refreshWordQueue(user: User) {
+  const cards = await prisma.card.findMany({
+    where: { userId: user.id },
+    include: { word: true },
+    orderBy: { lastReview: "desc" },
+    take: 30,
+  });
+  const candidates = await prisma.word.findMany({
+    where: { language: user.language, id: { notIn: cards.map((c) => c.wordId) } },
+    orderBy: { rank: "asc" },
+    take: 40,
+  });
+  if (candidates.length === 0) return;
+
+  const weekCount = Math.min(user.newWordsPerDay * 7, candidates.length);
+  const wordIds = await pickNextWords({
+    language: user.language,
+    level: user.level,
+    performance: cards.map((c) => ({
+      term: c.word.term,
+      translation: c.word.translation,
+      kind: c.word.kind,
+      lapses: c.lapses,
+      reps: c.reps,
+    })),
+    candidates: candidates.map((c) => ({
+      id: c.id,
+      term: c.term,
+      translation: c.translation,
+      kind: c.kind,
+      rank: c.rank,
+    })),
+    count: weekCount,
+  });
+  if (wordIds.length > 0) {
+    await prisma.user.update({ where: { id: user.id }, data: { wordQueue: JSON.stringify(wordIds) } });
+  }
+}
+
+/** Handle an inbound reply: grade, update FSRS + streak, respond. */
 export async function handleReply(user: User, text: string): Promise<string> {
   const pending = await prisma.message.findFirst({
     where: { userId: user.id, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
@@ -136,7 +194,7 @@ export async function handleReply(user: User, text: string): Promise<string> {
     return "No quiz pending — your next words arrive tomorrow morning. 📚";
   }
 
-  // Mark answered up front so a Twilio webhook retry can't re-grade the same quiz.
+  // Mark answered up front so a webhook retry can't re-grade the same quiz.
   await prisma.message.update({ where: { id: pending.id }, data: { answered: true } });
 
   const items = JSON.parse(pending.quizItems!) as QuizItem[];
@@ -178,7 +236,9 @@ export async function handleReply(user: User, text: string): Promise<string> {
 
 /** Called hourly by cron: send due lessons and periodically re-optimize cadence. */
 export async function runHourlyTick() {
-  const users = await prisma.user.findMany({ where: { verified: true, optedOut: false } });
+  const users = await prisma.user.findMany({
+    where: { verified: true, optedOut: false, placementDone: true },
+  });
   const results: { userId: string; action: string }[] = [];
 
   for (const user of users) {
@@ -232,6 +292,14 @@ export async function runHourlyTick() {
           },
         });
         results.push({ userId: user.id, action: "cadence-optimized" });
+
+        // Weekly word picker: LLM reviews performance and queues next week's items.
+        try {
+          await refreshWordQueue(user);
+          results.push({ userId: user.id, action: "words-picked" });
+        } catch (err) {
+          console.error(`word picking failed for user ${user.id}`, err);
+        }
       }
     }
     } catch (err) {

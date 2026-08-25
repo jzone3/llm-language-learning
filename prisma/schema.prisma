@@ -11,8 +11,7 @@ model User {
   id              String    @id @default(cuid())
   phone           String    @unique
   name            String?
-  language        String    @default("es")
-  channel         String    @default("sms") // "sms" | "whatsapp"
+  language        String    @default("he")
   timezone        String    @default("America/Los_Angeles")
   // Cadence
   sendHour        Int       @default(8) // local hour for the morning message
@@ -27,18 +26,25 @@ model User {
   verifyAttempts  Int       @default(0)
   optedOut        Boolean   @default(false)
   newWordsPerDay  Int       @default(2)
+  // Placement + personalization
+  level           String    @default("beginner") // "beginner" | "intermediate" | "advanced"
+  placementDone   Boolean   @default(false)
+  placementToken  String?
+  wordQueue       String? // JSON array of word ids picked by the weekly LLM word picker
   createdAt       DateTime  @default(now())
   cards           Card[]
   messages        Message[]
 }
 
 model Word {
-  id          String @id @default(cuid())
-  language    String
-  rank        Int // frequency rank (1 = most common)
-  term        String
-  translation String
-  cards       Card[]
+  id              String  @id @default(cuid())
+  language        String
+  rank            Int // frequency/usefulness rank (1 = most common)
+  term            String
+  translation     String
+  transliteration String? // romanization for non-Latin scripts
+  kind            String  @default("word") // "word" | "phrase" | "slang"
+  cards           Card[]
 
   @@unique([language, rank])
 }
