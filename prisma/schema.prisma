@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(cuid())
+  phone           String    @unique
+  name            String?
+  language        String    @default("es")
+  timezone        String    @default("America/Los_Angeles")
+  // Cadence
+  sendHour        Int       @default(8) // local hour for the morning message
+  secondSendHour  Int? // unlocked by streak; null = mornings only
+  streak          Int       @default(0)
+  lastAnsweredAt  DateTime?
+  cadenceNotes    String? // LLM timing-optimizer summary of response patterns
+  // Lifecycle
+  verified        Boolean   @default(false)
+  verifyCode      String?
+  optedOut        Boolean   @default(false)
+  newWordsPerDay  Int       @default(2)
+  createdAt       DateTime  @default(now())
+  cards           Card[]
+  messages        Message[]
+}
+
+model Word {
+  id          String @id @default(cuid())
+  language    String
+  rank        Int // frequency rank (1 = most common)
+  term        String
+  translation String
+  cards       Card[]
+
+  @@unique([language, rank])
+}
+
+model Card {
+  id         String    @id @default(cuid())
+  userId     String
+  wordId     String
+  // FSRS state
+  due        DateTime  @default(now())
+  stability  Float     @default(0)
+  difficulty Float     @default(0)
+  reps          Int       @default(0)
+  lapses        Int       @default(0)
+  learningSteps Int       @default(0)
+  state      Int       @default(0) // 0=new 1=learning 2=review 3=relearning
+  lastReview DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id])
+  word       Word      @relation(fields: [wordId], references: [id])
+
+  @@unique([userId, wordId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  userId    String
+  direction String // "out" | "in"
+  kind      String // "quiz" | "new_words" | "reply" | "verify" | "other"
+  body      String
+  // For quiz messages: JSON array of { cardId, prompt, answer }
+  quizItems String?
+  answered  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}

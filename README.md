@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VocabText
 
-## Getting Started
+Learn a language by answering one text a day. SMS-based vocabulary learning with real spaced repetition (FSRS), LLM-generated example sentences, lenient LLM grading of free-text replies, and an adaptive send cadence.
 
-First, run the development server:
+## How it works
+
+1. User signs up on the landing page with their phone number (SMS code verification).
+2. Every morning (default 8am local) they get one SMS: a short quiz of due words (active recall — they type the answer) plus 1–2 new frequency-ordered words with an example sentence.
+3. They reply with their answers; an LLM grades leniently (typos/accents/synonyms OK), FSRS reschedules each word, and the reply includes instant feedback + streak.
+4. Cadence rules:
+   - One morning message per day to start.
+   - A second (afternoon) message unlocks only after a 4+ day reply streak.
+   - Never double-texts: no new quiz while one is unanswered (waits until next morning).
+   - Weekly, an LLM reviews the user's reply timing and adjusts send hour / frequency.
+
+## Stack
+
+- Next.js (App Router) + Tailwind — landing page + API routes
+- Prisma + SQLite (swap datasource for prod)
+- Twilio — outbound SMS + inbound webhook (`/api/twilio/webhook`)
+- OpenAI — sentence generation, grading, cadence optimization
+- ts-fsrs — spaced-repetition scheduling
+- Hourly cron (`/api/cron/tick`, wired for Vercel Cron in `vercel.json`)
+
+## Setup
 
 ```bash
+npm install
+cp .env.example .env   # fill in keys
+npx prisma migrate dev
+npx tsx prisma/seed.ts # seed Spanish word list
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Point your Twilio number's inbound SMS webhook at `POST /api/twilio/webhook` (use ngrok in dev). Trigger `GET /api/cron/tick` hourly (Vercel Cron does this in prod).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Production notes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- US A2P 10DLC registration is required to send SMS at scale via Twilio.
+- Swap the Prisma datasource to Postgres/Turso before deploying to serverless.
