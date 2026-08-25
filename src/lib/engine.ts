@@ -56,6 +56,7 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
     quizItems.forEach((q, i) => lines.push(`${i + 1}. ${q.prompt}`));
   }
 
+  const newWordIds: string[] = [];
   if (opts.includeNewWords) {
     const seen = await prisma.card.findMany({ where: { userId: user.id }, select: { wordId: true } });
     const newWords = await prisma.word.findMany({
@@ -70,31 +71,7 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
         const { sentence, sentence_en } = await generateSentence(user.language, w.term, w.translation);
         lines.push(`• ${w.term} = ${w.translation}`);
         lines.push(`  "${sentence}" (${sentence_en})`);
-        await prisma.card.create({
-          data: {
-            userId: user.id,
-            wordId: w.id,
-            // New words enter learning immediately so they show up in tomorrow's quiz.
-            ...review(
-              {
-                id: "",
-                userId: user.id,
-                wordId: w.id,
-                due: now,
-                stability: 0,
-                difficulty: 0,
-                reps: 0,
-                lapses: 0,
-                learningSteps: 0,
-                state: 0,
-                lastReview: null,
-                createdAt: now,
-              },
-              Rating.Good,
-              now
-            ),
-          },
-        });
+        newWordIds.push(w.id);
       }
     }
   }
@@ -103,7 +80,38 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
 
   const streakBit = user.streak >= 2 ? ` 🔥${user.streak}` : "";
   const body = `☀️ VocabText${streakBit}\n${lines.join("\n")}`;
-  return sendSms({ userId: user.id, to: user.phone, body, kind: "quiz", quizItems });
+  const message = await sendSms({ userId: user.id, to: user.phone, body, kind: "quiz", quizItems });
+
+  // Persist new-word cards only after the SMS is confirmed sent, so an
+  // undelivered lesson doesn't consume words the user never saw.
+  for (const wordId of newWordIds) {
+    await prisma.card.create({
+      data: {
+        userId: user.id,
+        wordId,
+        // New words enter learning immediately so they show up in tomorrow's quiz.
+        ...review(
+          {
+            id: "",
+            userId: user.id,
+            wordId,
+            due: now,
+            stability: 0,
+            difficulty: 0,
+            reps: 0,
+            lapses: 0,
+            learningSteps: 0,
+            state: 0,
+            lastReview: null,
+            createdAt: now,
+          },
+          Rating.Good,
+          now
+        ),
+      },
+    });
+  }
+  return message;
 }
 
 /** Handle an inbound SMS reply: grade, update FSRS + streak, respond. */
@@ -120,6 +128,9 @@ export async function handleReply(user: User, text: string): Promise<string> {
   if (!pending) {
     return "No quiz pending — your next words arrive tomorrow morning. 📚";
   }
+
+  // Mark answered up front so a Twilio webhook retry can't re-grade the same quiz.
+  await prisma.message.update({ where: { id: pending.id }, data: { answered: true } });
 
   const items = JSON.parse(pending.quizItems!) as QuizItem[];
   const graded = items.length > 0 ? await gradeAnswers(user.language, items, text) : [];
@@ -138,8 +149,6 @@ export async function handleReply(user: User, text: string): Promise<string> {
       graded[i].correct ? `${i + 1}. ✓ ${items[i].answer}` : `${i + 1}. ✗ ${items[i].answer} — ${graded[i].feedback}`
     );
   }
-
-  await prisma.message.update({ where: { id: pending.id }, data: { answered: true } });
 
   // Streak: increment once per local day.
   const todayStart = startOfLocalDayUtc(user.timezone, now);
@@ -166,6 +175,7 @@ export async function runHourlyTick() {
   const results: { userId: string; action: string }[] = [];
 
   for (const user of users) {
+    try {
     const now = new Date();
     const { hour } = localParts(user.timezone, now);
     const todayStart = startOfLocalDayUtc(user.timezone, now);
@@ -176,8 +186,8 @@ export async function runHourlyTick() {
     const unanswered = sentToday.some((m) => !m.answered);
 
     if (hour === user.sendHour && sentToday.length === 0) {
-      await sendLesson(user, { includeNewWords: true });
-      results.push({ userId: user.id, action: "morning" });
+      const sent = await sendLesson(user, { includeNewWords: true });
+      if (sent) results.push({ userId: user.id, action: "morning" });
     } else if (
       user.secondSendHour !== null &&
       hour === user.secondSendHour &&
@@ -185,8 +195,8 @@ export async function runHourlyTick() {
       sentToday.length === 1 &&
       !unanswered // never double-text on top of an unanswered quiz
     ) {
-      await sendLesson(user, { includeNewWords: false });
-      results.push({ userId: user.id, action: "afternoon" });
+      const sent = await sendLesson(user, { includeNewWords: false });
+      if (sent) results.push({ userId: user.id, action: "afternoon" });
     }
 
     // Weekly-ish cadence re-optimization, run during the user's morning hour.
@@ -216,6 +226,10 @@ export async function runHourlyTick() {
         });
         results.push({ userId: user.id, action: "cadence-optimized" });
       }
+    }
+    } catch (err) {
+      console.error(`hourly tick failed for user ${user.id}`, err);
+      results.push({ userId: user.id, action: "error" });
     }
   }
   return results;

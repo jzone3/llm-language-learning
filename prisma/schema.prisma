@@ -22,6 +22,8 @@ model User {
   // Lifecycle
   verified        Boolean   @default(false)
   verifyCode      String?
+  verifyExpiresAt DateTime?
+  verifyAttempts  Int       @default(0)
   optedOut        Boolean   @default(false)
   newWordsPerDay  Int       @default(2)
   createdAt       DateTime  @default(now())

@@ -16,18 +16,24 @@ export async function POST(request: NextRequest) {
   const { phone, timezone } = parsed.data;
 
   const code = String(Math.floor(100000 + Math.random() * 900000));
+  const expires = new Date(Date.now() + 10 * 60_000);
   const user = await prisma.user.upsert({
     where: { phone },
-    create: { phone, timezone, verifyCode: code },
-    update: { timezone, verifyCode: code, optedOut: false },
+    create: { phone, timezone, verifyCode: code, verifyExpiresAt: expires },
+    update: { timezone, verifyCode: code, verifyExpiresAt: expires, verifyAttempts: 0, optedOut: false },
   });
 
-  await sendSms({
-    userId: user.id,
-    to: phone,
-    body: `VocabText code: ${code}\n\nReply STOP anytime to unsubscribe.`,
-    kind: "verify",
-  });
+  try {
+    await sendSms({
+      userId: user.id,
+      to: phone,
+      body: `VocabText code: ${code}\n\nReply STOP anytime to unsubscribe.`,
+      kind: "verify",
+    });
+  } catch (err) {
+    console.error("verify SMS failed", err);
+    return Response.json({ error: "Couldn't text that number — double-check it and try again." }, { status: 502 });
+  }
 
   return Response.json({ ok: true });
 }

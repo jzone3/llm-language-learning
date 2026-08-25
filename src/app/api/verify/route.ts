@@ -17,22 +17,35 @@ export async function POST(request: NextRequest) {
   const { phone, code } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { phone } });
-  if (!user || user.verifyCode !== code) {
+  if (!user || !user.verifyCode) {
+    return Response.json({ error: "Wrong code" }, { status: 400 });
+  }
+  if (user.verifyExpiresAt && user.verifyExpiresAt < new Date()) {
+    return Response.json({ error: "Code expired — sign up again to get a new one." }, { status: 400 });
+  }
+  if (user.verifyAttempts >= 5) {
+    return Response.json({ error: "Too many attempts — sign up again to get a new code." }, { status: 429 });
+  }
+  if (user.verifyCode !== code) {
+    await prisma.user.update({ where: { id: user.id }, data: { verifyAttempts: { increment: 1 } } });
     return Response.json({ error: "Wrong code" }, { status: 400 });
   }
 
+  const wasVerified = user.verified;
   const verifiedUser = await prisma.user.update({
     where: { id: user.id },
-    data: { verified: true, verifyCode: null },
+    data: { verified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0 },
   });
 
-  await sendSms({
-    userId: user.id,
-    to: user.phone,
-    body: "🎉 You're in! Here's your first lesson — reply to tomorrow morning's quiz to build your streak.",
-    kind: "other",
-  });
-  await sendLesson(verifiedUser, { includeNewWords: true });
+  if (!wasVerified) {
+    await sendSms({
+      userId: user.id,
+      to: user.phone,
+      body: "🎉 You're in! Here's your first lesson — reply to tomorrow morning's quiz to build your streak.",
+      kind: "other",
+    });
+    await sendLesson(verifiedUser, { includeNewWords: true });
+  }
 
   return Response.json({ ok: true });
 }
