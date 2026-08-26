@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { sendLesson } from "@/lib/engine";
-import { gradePlacement } from "@/lib/llm";
 import { sendWhatsApp } from "@/lib/whatsapp";
 
 const bodySchema = z.object({
@@ -22,6 +21,8 @@ export async function POST(request: NextRequest) {
   }
   if (user.placementDone) return Response.json({ ok: true, level: user.level });
 
+  // Multiple-choice: an answer is known only if the picked option matches the
+  // word's translation exactly. Skipped questions count as unknown.
   const attempted = answers.filter((a) => a.response.trim().length > 0);
   let knownWordIds: string[] = [];
 
@@ -29,12 +30,12 @@ export async function POST(request: NextRequest) {
     const words = await prisma.word.findMany({
       where: { id: { in: attempted.map((a) => a.wordId) }, language: user.language },
     });
-    const items = attempted.flatMap((a) => {
-      const w = words.find((x) => x.id === a.wordId);
-      return w ? [{ term: w.term, translation: w.translation, response: a.response, wordId: w.id }] : [];
-    });
-    const known = await gradePlacement(user.language, items);
-    knownWordIds = items.filter((_, i) => known[i]).map((it) => it.wordId);
+    knownWordIds = attempted
+      .filter((a) => {
+        const w = words.find((x) => x.id === a.wordId);
+        return w !== undefined && a.response === w.translation;
+      })
+      .map((a) => a.wordId);
   }
 
   const total = answers.length;

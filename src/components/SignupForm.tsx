@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { LANGUAGES } from "@/lib/words";
 
-type PlacementItem = { wordId: string; term: string; transliteration: string | null };
+type PlacementItem = { wordId: string; term: string; options: string[] };
 
 export function SignupForm() {
   const [phone, setPhone] = useState("");
@@ -14,6 +14,7 @@ export function SignupForm() {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<PlacementItem[]>([]);
   const [responses, setResponses] = useState<Record<string, string>>({});
+  const [current, setCurrent] = useState(0);
   const [level, setLevel] = useState<string | null>(null);
   const [token, setToken] = useState("");
 
@@ -69,16 +70,17 @@ export function SignupForm() {
     }
   }
 
-  async function submitPlacement(skip: boolean) {
+  async function submitPlacement(skip: boolean, finalResponses?: Record<string, string>) {
     setError(null);
     setLoading(true);
     try {
+      const answers = finalResponses ?? responses;
       const data = await post("/api/placement/submit", {
         phone,
         token,
         answers: skip
           ? []
-          : items.map((it) => ({ wordId: it.wordId, response: responses[it.wordId] ?? "" })),
+          : items.map((it) => ({ wordId: it.wordId, response: answers[it.wordId] ?? "" })),
       });
       setLevel(data.level);
       setStage("done");
@@ -99,52 +101,63 @@ export function SignupForm() {
   }
 
   if (stage === "placement") {
+    const item = items[current];
+
+    function answer(option: string) {
+      const next = { ...responses, [item.wordId]: option };
+      setResponses(next);
+      if (current + 1 < items.length) {
+        setCurrent(current + 1);
+      } else {
+        void submitPlacement(false, next);
+      }
+    }
+
     return (
       <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-lg font-semibold">Quick level check</h2>
           <p className="text-sm text-neutral-500">
-            Type the English meaning of any you know — leave the rest blank. This sets your
+            Question {current + 1} of {items.length} — pick the English meaning. This sets your
             starting point so we don&apos;t teach you words you already know.
           </p>
         </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+          <div
+            className="h-full rounded-full bg-neutral-900 transition-all"
+            style={{ width: `${(current / items.length) * 100}%` }}
+          />
+        </div>
+        <p className="text-3xl font-semibold">{item.term}</p>
         <div className="flex flex-col gap-2">
-          {items.map((it) => (
-            <div key={it.wordId} className="flex items-center gap-3">
-              <span className="w-40 shrink-0 text-base">
-                {it.term}
-                {it.transliteration && (
-                  <span className="block text-xs text-neutral-400">{it.transliteration}</span>
-                )}
-              </span>
-              <input
-                type="text"
-                value={responses[it.wordId] ?? ""}
-                onChange={(e) => setResponses({ ...responses, [it.wordId]: e.target.value })}
-                placeholder="English meaning"
-                className="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-neutral-900"
-              />
-            </div>
+          {item.options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              disabled={loading}
+              onClick={() => answer(option)}
+              className="rounded-xl border border-neutral-300 bg-white px-4 py-3 text-left text-base hover:border-neutral-900 disabled:opacity-50"
+            >
+              {option}
+            </button>
           ))}
-        </div>
-        <div className="flex gap-3">
           <button
             type="button"
             disabled={loading}
-            onClick={() => submitPlacement(false)}
-            className="rounded-xl bg-neutral-900 px-6 py-3 text-base font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+            onClick={() => answer("")}
+            className="rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-left text-base text-neutral-500 hover:border-neutral-500 disabled:opacity-50"
           >
-            {loading ? "..." : "Finish"}
-          </button>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => submitPlacement(true)}
-            className="rounded-xl border border-neutral-300 px-6 py-3 text-base font-medium text-neutral-700 hover:border-neutral-500 disabled:opacity-50"
-          >
-            I&apos;m brand new — skip
+            I don&apos;t know
           </button>
         </div>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => submitPlacement(true)}
+          className="w-fit text-sm text-neutral-500 underline hover:text-neutral-700 disabled:opacity-50"
+        >
+          {loading ? "..." : "I'm brand new — skip the quiz"}
+        </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     );
@@ -160,7 +173,7 @@ export function SignupForm() {
         >
           {LANGUAGES.map((l) => (
             <option key={l.code} value={l.code}>
-              {l.name}
+              {l.flag} {l.name}
             </option>
           ))}
         </select>

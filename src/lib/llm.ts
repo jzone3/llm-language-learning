@@ -44,23 +44,6 @@ export async function transcribeAudio(audio: ArrayBuffer, contentType: string, l
 export type GradedAnswer = { correct: boolean; feedback: string };
 
 /**
- * Grade the website placement test: the learner saw target-language items and
- * typed English meanings (or left them blank). Lenient like quiz grading.
- */
-export async function gradePlacement(
-  language: string,
-  items: { term: string; translation: string; response: string }[]
-): Promise<boolean[]> {
-  const schema = z.object({ known: z.array(z.boolean()) });
-  const out = await jsonCall(
-    schema,
-    `You grade a ${LANGUAGE_NAMES[language] ?? language} placement test. For each item the learner saw the ${LANGUAGE_NAMES[language] ?? language} term and typed its English meaning. Mark it known (true) if the response shows they understand the word — accept typos, partial meanings, and synonyms. Empty or wrong responses are false. Return JSON {"known": [bool, ...]} with exactly one boolean per item, in order.`,
-    JSON.stringify(items)
-  );
-  return items.map((_, i) => out.known[i] ?? false);
-}
-
-/**
  * Weekly word picker: given the learner's recent performance, choose which
  * unseen items they should learn next week (words, phrases, slang).
  */
