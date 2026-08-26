@@ -11,17 +11,17 @@ export type SeedWord = {
   kind?: "word" | "phrase" | "slang"; // defaults to "word"
 };
 
-export const LANGUAGES: { code: string; name: string; rtl?: boolean }[] = [
-  { code: "he", name: "Hebrew", rtl: true },
-  { code: "es", name: "Spanish" },
-  { code: "fr", name: "French" },
-  { code: "de", name: "German" },
-  { code: "it", name: "Italian" },
-  { code: "pt", name: "Portuguese" },
-  { code: "ja", name: "Japanese" },
-  { code: "ko", name: "Korean" },
-  { code: "zh", name: "Mandarin Chinese" },
-  { code: "ru", name: "Russian" },
+export const LANGUAGES: { code: string; name: string; flag: string; rtl?: boolean }[] = [
+  { code: "he", name: "Hebrew", flag: "🇮🇱", rtl: true },
+  { code: "es", name: "Spanish", flag: "🇪🇸" },
+  { code: "fr", name: "French", flag: "🇫🇷" },
+  { code: "de", name: "German", flag: "🇩🇪" },
+  { code: "it", name: "Italian", flag: "🇮🇹" },
+  { code: "pt", name: "Portuguese", flag: "🇧🇷" },
+  { code: "ja", name: "Japanese", flag: "🇯🇵" },
+  { code: "ko", name: "Korean", flag: "🇰🇷" },
+  { code: "zh", name: "Mandarin Chinese", flag: "🇨🇳" },
+  { code: "ru", name: "Russian", flag: "🇷🇺" },
 ];
 
 export const LANGUAGE_NAMES: Record<string, string> = Object.fromEntries(

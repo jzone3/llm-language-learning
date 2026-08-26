@@ -4,9 +4,20 @@ import { prisma } from "@/lib/db";
 
 const bodySchema = z.object({ phone: z.string(), token: z.string().min(1) });
 
-const PLACEMENT_ITEMS = 12;
+const PLACEMENT_ITEMS = 10;
+const OPTIONS_PER_ITEM = 4;
 
-/** Sample items evenly across the frequency range for the placement test. */
+function shuffle<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** Sample items evenly across the frequency range; each becomes a multiple-choice
+ * question with the correct English meaning plus distractors from other words. */
 export async function POST(request: NextRequest) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) return Response.json({ error: "Invalid request" }, { status: 400 });
@@ -28,11 +39,21 @@ export async function POST(request: NextRequest) {
     sampled.push(words[i]);
   }
 
-  return Response.json({
-    items: sampled.map((w) => ({
+  const items = sampled.map((w) => {
+    const seen = new Set([w.translation]);
+    const distractors: string[] = [];
+    for (const x of shuffle(words)) {
+      if (distractors.length >= OPTIONS_PER_ITEM - 1) break;
+      if (x.id === w.id || seen.has(x.translation)) continue;
+      seen.add(x.translation);
+      distractors.push(x.translation);
+    }
+    return {
       wordId: w.id,
       term: w.term,
-      transliteration: w.transliteration,
-    })),
+      options: shuffle([w.translation, ...distractors]),
+    };
   });
+
+  return Response.json({ items });
 }

@@ -5,7 +5,7 @@ Learn a language by answering one WhatsApp message a day. WhatsApp-only vocabula
 ## How it works
 
 1. User signs up on the landing page: pick a language (10 supported — Hebrew, Spanish, French, German, Italian, Portuguese, Japanese, Korean, Mandarin, Russian), enter a phone number, verify via a WhatsApp code.
-2. A quick placement test on the website (type the English meaning of ~12 items sampled across the frequency list, or skip if brand new). An LLM grades it, sets the level (beginner/intermediate/advanced), and marks known items as already-learned cards so lessons never reteach them.
+2. A quick placement quiz on the website: up to 10 multiple-choice questions, one at a time (pick the English meaning of items sampled across the frequency list, or skip if brand new). It sets the level (beginner/intermediate/advanced) and marks known items as already-learned cards so lessons never reteach them.
 3. Every morning (default 8am local) they get one WhatsApp message: a short quiz of due items (active recall) plus 1–2 new items — a curated mix of high-frequency words, everyday phrases, and common slang, with transliteration for non-Latin scripts.
 4. They reply by text **or voice note** (transcribed with Whisper, then graded the same way); an LLM grades leniently (typos/accents/transliterations/synonyms OK), FSRS reschedules each item, and the reply includes instant feedback + streak.
 5. Cadence rules:
@@ -19,7 +19,7 @@ Learn a language by answering one WhatsApp message a day. WhatsApp-only vocabula
 - Next.js (App Router) + Tailwind — landing page, placement test, API routes
 - Prisma + SQLite (swap datasource for prod)
 - Meta WhatsApp Cloud API — outbound messages (`src/lib/whatsapp.ts`) + inbound webhook (`/api/whatsapp/webhook`) with verify-token handshake and X-Hub-Signature-256 validation
-- OpenAI — sentence generation, grading, placement grading, weekly word picking, cadence optimization, Whisper transcription
+- OpenAI — sentence generation, grading, weekly word picking, cadence optimization, Whisper transcription
 - ts-fsrs — spaced-repetition scheduling
 - Hourly cron (`/api/cron/tick`, wired for Vercel Cron in `vercel.json`)
 
