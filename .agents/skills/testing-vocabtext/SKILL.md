@@ -1,17 +1,19 @@
 ---
 name: testing-vocabtext
-description: How to run and test the VocabText SMS vocab app (Next.js + Prisma/SQLite + Twilio + OpenAI) locally without live Twilio/OpenAI.
+description: How to run and test the VocabText WhatsApp vocab app (Next.js + Prisma/SQLite + Meta WhatsApp Cloud API + OpenAI) locally without live Meta credentials.
 ---
 
 # Testing VocabText locally
 
-- Setup: `.env` needs `DATABASE_URL="file:./dev.db"`; run `npx prisma migrate dev` and `npx tsx prisma/seed.ts` (118 Spanish words). Start with `npm run dev` (port 3000).
-- OpenAI: `src/lib/llm.ts` uses the OpenAI SDK with env `OPENAI_API_KEY` and optional `OPENAI_MODEL`. The SDK also honors `OPENAI_BASE_URL`, so if the OpenAI key has no credits you can point it at any OpenAI-compatible endpoint (e.g. Gemini compat: `OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `OPENAI_MODEL=gemini-2.5-flash`, key = GEMINI_API_KEY).
-- Twilio: `src/lib/sms.ts#sendSms` calls Twilio directly and throws without valid creds. For engine tests, temporarily guard the `client.messages.create` call behind `process.env.SMS_STUB === "1"` (log instead of send), run scripts with `SMS_STUB=1`, and revert after. `handleReply` never sends SMS, so `/api/twilio/webhook` grading works without Twilio.
-- Webhook: in dev (`NODE_ENV !== production`) the Twilio signature check is skipped — `curl -X POST localhost:3000/api/twilio/webhook -d "From=%2B1555..." -d "Body=hola"` returns TwiML.
-- Engine tests: drive `src/lib/engine.ts` (`sendLesson`, `handleReply`, `runHourlyTick`) via `npx tsx` scripts importing `./src/lib/db`; manipulate `user.sendHour/secondSendHour/streak` and `card.due` directly with Prisma to trigger cadence branches for the current local hour.
-- Signup UI quirk: typing into the phone input with automation can append rather than replace; clear via native setter + input event if needed.
+- Setup: `.env` needs `DATABASE_URL="file:./dev.db"` and `OPENAI_API_KEY`; run `npx prisma migrate dev` and `npx tsx prisma/seed.ts` (seeds ~984 words/phrases/slang across 10 languages, Hebrew default). Start with `npm run dev` (port 3000).
+- OpenAI: `src/lib/llm.ts` uses the OpenAI SDK with `OPENAI_API_KEY`, optional `OPENAI_MODEL`/`OPENAI_BASE_URL`. Whisper transcription (`transcribeAudio`) needs the real OpenAI API (`/audio/transcriptions`); compat providers often 404 there.
+- WhatsApp (Meta Cloud API): `src/lib/whatsapp.ts#sendWhatsApp`/`sendVerifyCode` call the Graph API and throw without `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`. For testing, temporarily guard the fetch behind `process.env.WA_STUB === "1"` (log + still create the Message row), and stub `fetchWhatsAppMedia` to return a local audio file. Revert after.
+- Webhook: POST Meta-shaped JSON to `/api/whatsapp/webhook`: `{"entry":[{"changes":[{"value":{"messages":[{"from":"1555...","id":"wamid.x","type":"text","text":{"body":"1. toda"}}]}}]}]}`. Audio replies use `type: "audio"` with `audio: {id, mime_type}`. Signature validation is skipped outside production; sender digits are normalized to `+E.164`.
+- Placement flow: `/api/verify` returns a single-use `placementToken`; `/api/placement/start` and `/api/placement/submit` require `{phone, token}`. Placement gates lessons (`placementDone: true` required by cron). Level thresholds: known/total >= 0.7 advanced, >= 0.35 intermediate.
+- Voice-note testing without a phone: generate real target-language audio with OpenAI TTS (`/audio/speech`), have the stubbed `fetchWhatsAppMedia` return it, then the webhook audio path transcribes via whisper-1 and grades the transcript.
+- Engine tests: drive `src/lib/engine.ts` (`sendLesson`, `handleReply`, `runHourlyTick`, `refreshWordQueue`) via `npx tsx` scripts importing `./src/lib/db`; manipulate `user.sendHour/streak/wordQueue` and `card.due` with Prisma to trigger cadence/queue branches.
+- Quirks: first post-placement lesson has empty `quizItems` (new words only) — replies get "Got it!" without grading. Signup phone input: automation typing may append; clear via native setter + input event.
 
 ## Devin Secrets Needed
-- `OPENAI_API_KEY` (may be out of credits; fallback `GEMINI_API_KEY` via OPENAI_BASE_URL)
-- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` only for live SMS (not needed with SMS_STUB)
+- `OPENAI_API_KEY` (real OpenAI needed for Whisper; chat can fall back to a compat provider via `OPENAI_BASE_URL`)
+- `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_APP_SECRET` / `WHATSAPP_VERIFY_TOKEN` only for live Meta sends (not needed with WA_STUB)
