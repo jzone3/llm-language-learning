@@ -116,10 +116,9 @@ export function SignupForm() {
     return (
       <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Quick level check</h2>
+          <h2 className="text-lg font-semibold">Step 2 of 2: Quick level check</h2>
           <p className="text-sm text-neutral-500">
-            Question {current + 1} of {items.length} — pick the English meaning. This sets your
-            starting point so we don&apos;t teach you words you already know.
+            Question {current + 1} of {items.length}
           </p>
         </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
@@ -129,7 +128,7 @@ export function SignupForm() {
           />
         </div>
         <p className="text-3xl font-semibold">{item.term}</p>
-        <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {item.options.map((option) => (
             <button
               key={option}
@@ -145,7 +144,7 @@ export function SignupForm() {
             type="button"
             disabled={loading}
             onClick={() => answer("")}
-            className="rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-left text-base text-neutral-500 hover:border-neutral-500 disabled:opacity-50"
+            className="col-span-2 rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-center text-base text-neutral-500 hover:border-neutral-500 disabled:opacity-50"
           >
             I don&apos;t know
           </button>
