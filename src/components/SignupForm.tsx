@@ -5,7 +5,7 @@ import { LANGUAGES } from "@/lib/words";
 
 type PlacementItem = { wordId: string; term: string; options: string[] };
 
-export function SignupForm() {
+export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: React.ReactNode }) {
   const [phone, setPhone] = useState("");
   const [language, setLanguage] = useState("he");
   const [code, setCode] = useState("");
@@ -93,10 +93,13 @@ export function SignupForm() {
 
   if (stage === "done") {
     return (
-      <p className="text-lg font-medium text-green-700">
-        🎉 You&apos;re in{level ? ` — starting at ${level} level` : ""}. Check WhatsApp for your
-        first lesson.
-      </p>
+      <div className="mt-10">
+        <h2 className="text-lg font-semibold">You&apos;re all set</h2>
+        <p className="mt-2 text-lg font-medium text-green-700">
+          🎉 You&apos;re in{level ? ` — starting at ${level} level` : ""}. Check WhatsApp for your
+          first lesson.
+        </p>
+      </div>
     );
   }
 
@@ -114,7 +117,7 @@ export function SignupForm() {
     }
 
     return (
-      <div className="flex flex-col gap-4">
+      <div className="mt-10 flex flex-col gap-4">
         <div>
           <h2 className="text-lg font-semibold">Step 2 of 2: Quick level check</h2>
           <p className="text-sm text-neutral-500">
@@ -163,7 +166,15 @@ export function SignupForm() {
   }
 
   return (
-    <form onSubmit={stage === "phone" ? submitPhone : submitCode} className="flex flex-col gap-3">
+    <>
+      {stage === "phone" && hero}
+      {stage === "code" && (
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold">Step 1 of 2: Verify your number</h2>
+          <p className="text-sm text-neutral-500">Enter the code we sent you on WhatsApp.</p>
+        </div>
+      )}
+    <form onSubmit={stage === "phone" ? submitPhone : submitCode} className="mt-4 flex flex-col gap-3">
       {stage === "phone" && (
         <select
           value={language}
@@ -214,5 +225,7 @@ export function SignupForm() {
       )}
       {error && <p className="text-sm text-red-600 sm:w-full">{error}</p>}
     </form>
+      {stage === "phone" && demo}
+    </>
   );
 }
