@@ -51,7 +51,8 @@ export function LanguageSelect({ value, onChange, disabled }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    listRef.current?.focus();
+    listRef.current?.focus({ preventScroll: true });
+    listRef.current?.scrollIntoView({ block: "nearest" });
     listRef.current
       ?.querySelector<HTMLElement>(`[data-index="${active}"]`)
       ?.scrollIntoView({ block: "nearest" });
@@ -140,7 +141,7 @@ export function LanguageSelect({ value, onChange, disabled }: Props) {
         aria-label={`Language: ${selected.name}`}
         onClick={() => (open ? closeList() : openList())}
         onKeyDown={onTriggerKeyDown}
-        className="flex items-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 py-3 text-base outline-none hover:border-neutral-400 focus:border-neutral-900 disabled:opacity-50 aria-expanded:border-neutral-900"
+        className="flex items-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 py-3 text-base outline-none hover:border-neutral-400 focus:border-neutral-900 active:border-neutral-900 disabled:opacity-50 aria-expanded:border-neutral-900"
       >
         <span aria-hidden="true">{selected.flag}</span>
         <span>{selected.name}</span>
@@ -180,7 +181,7 @@ export function LanguageSelect({ value, onChange, disabled }: Props) {
                 data-index={i}
                 onPointerMove={() => setActive(i)}
                 onClick={() => select(l.code)}
-                className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-base ${
+                className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-base active:bg-neutral-100 ${
                   isActive ? "bg-neutral-100" : ""
                 } ${isSelected ? "font-medium" : ""}`}
               >

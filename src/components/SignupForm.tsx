@@ -172,7 +172,9 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
             style={{ width: `${(current / items.length) * 100}%` }}
           />
         </div>
-        <p className="text-3xl font-semibold">{item.term}</p>
+        <p dir="auto" className="break-words py-2 text-center text-4xl font-semibold leading-tight">
+          {item.term}
+        </p>
         <div className="relative">
           <div
             className={`grid grid-cols-2 gap-2 transition-opacity ${grading ? "pointer-events-none opacity-50" : ""}`}
@@ -184,7 +186,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
                 type="button"
                 disabled={loading}
                 onClick={() => answer(option)}
-                className="rounded-xl border border-neutral-300 bg-white px-4 py-3 text-left text-base hover:border-neutral-900 disabled:opacity-50"
+                className="min-h-11 rounded-xl border border-neutral-300 bg-white px-4 py-3 text-left text-base break-words hover:border-neutral-900 active:border-neutral-900 active:bg-neutral-50 disabled:opacity-50"
               >
                 {option}
               </button>
@@ -193,7 +195,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
               type="button"
               disabled={loading}
               onClick={() => answer("")}
-              className="col-span-2 rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-center text-base text-neutral-500 hover:border-neutral-500 disabled:opacity-50"
+              className="col-span-2 min-h-11 rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-center text-base text-neutral-500 hover:border-neutral-500 active:border-neutral-500 active:bg-neutral-50 disabled:opacity-50"
             >
               I don&apos;t know
             </button>
@@ -214,7 +216,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           type="button"
           disabled={loading}
           onClick={() => submitPlacement(true)}
-          className="w-fit text-sm text-neutral-500 underline hover:text-neutral-700 disabled:opacity-50 disabled:no-underline"
+          className="-my-2 min-h-11 w-fit py-2 text-sm text-neutral-500 underline hover:text-neutral-700 active:text-neutral-700 disabled:opacity-50 disabled:no-underline"
         >
           <ButtonLabel loading={skipping} busyLabel="Skipping…">
             I&apos;m brand new — skip the quiz
@@ -243,6 +245,8 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
         <input
           type="tel"
           required
+          autoComplete="tel"
+          enterKeyHint="send"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="(415) 555-1234"
@@ -253,6 +257,9 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           type="text"
           required
           inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="one-time-code"
+          enterKeyHint="go"
           maxLength={6}
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -263,7 +270,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
       <button
         type="submit"
         disabled={loading}
-        className="rounded-xl bg-neutral-900 px-6 py-3 text-base font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+        className="rounded-xl bg-neutral-900 px-6 py-3 text-base font-medium text-white hover:bg-neutral-700 active:bg-neutral-700 disabled:opacity-50"
       >
         <ButtonLabel loading={loading} busyLabel={stage === "phone" ? "Sending…" : "Verifying…"}>
           {stage === "phone" ? "Message me" : "Verify"}

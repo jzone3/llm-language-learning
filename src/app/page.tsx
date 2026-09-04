@@ -3,7 +3,7 @@ import { SignupForm } from "@/components/SignupForm";
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#fafaf7] text-neutral-900 flex flex-col">
-      <div className="mx-auto w-full max-w-2xl px-6 py-20 flex-1">
+      <div className="mx-auto w-full max-w-2xl px-5 py-12 sm:px-6 sm:py-20 flex-1">
         <p className="text-sm font-medium tracking-widest uppercase text-neutral-400">VocabText</p>
         <SignupForm
           hero={
