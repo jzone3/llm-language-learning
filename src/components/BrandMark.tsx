@@ -1,0 +1,20 @@
+/** Inline-style version of icon.svg for next/og ImageResponse (no className support). */
+export function BrandMark({ size }: { size: number }) {
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size}>
+      <rect width="64" height="64" rx="14" fill="#171717" />
+      <path
+        d="M14 16h36a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H30l-10 8v-8h-6a4 4 0 0 1-4-4V20a4 4 0 0 1 4-4z"
+        fill="#fafaf7"
+      />
+      <path
+        d="M22 31l6 6 14-14"
+        fill="none"
+        stroke="#171717"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

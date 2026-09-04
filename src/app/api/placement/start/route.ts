@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
   const user = await prisma.user.findUnique({ where: { phone: parsed.data.phone } });
   if (!user?.verified || !user.placementToken || user.placementToken !== parsed.data.token) {
-    return Response.json({ error: "Not authorized" }, { status: 403 });
+    return Response.json({ error: "This signup session has expired — refresh the page and start again." }, { status: 403 });
   }
 
   const words = await prisma.word.findMany({
