@@ -1,11 +1,11 @@
 ---
 name: testing-vocabtext
-description: How to run and test the VocabText WhatsApp vocab app (Next.js + Prisma/SQLite + Meta WhatsApp Cloud API + OpenAI) locally without live Meta credentials.
+description: How to run and test the VocabText WhatsApp vocab app (Next.js + Prisma/Postgres + Meta WhatsApp Cloud API + OpenAI) locally without live Meta credentials.
 ---
 
 # Testing VocabText locally
 
-- Setup: `.env` needs `DATABASE_URL="file:./dev.db"` and `OPENAI_API_KEY`; run `npx prisma migrate dev` and `npx tsx prisma/seed.ts` (seeds ~984 words/phrases/slang across 10 languages, Hebrew default). Start with `npm run dev` (port 3000).
+- Setup: start Postgres (`docker run -d --name pg-vocab -e POSTGRES_PASSWORD=pg -p 5433:5432 postgres:16-alpine`, then `docker exec pg-vocab psql -U postgres -c "create database vocabtext"`); `.env` needs `DATABASE_URL` and `DATABASE_URL_UNPOOLED` (both `postgresql://postgres:pg@localhost:5433/vocabtext`) and `OPENAI_API_KEY`; run `npx prisma migrate dev` and `npx tsx prisma/seed.ts` (seeds ~984 words/phrases/slang across 10 languages, Hebrew default). Start with `npm run dev` (port 3000).
 - OpenAI: `src/lib/llm.ts` uses the OpenAI SDK with `OPENAI_API_KEY`, optional `OPENAI_MODEL`/`OPENAI_BASE_URL`. Whisper transcription (`transcribeAudio`) needs the real OpenAI API (`/audio/transcriptions`); compat providers often 404 there.
 - WhatsApp (Meta Cloud API): `src/lib/whatsapp.ts#sendWhatsApp`/`sendVerifyCode` call the Graph API and throw without `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`. For testing, temporarily guard the fetch behind `process.env.WA_STUB === "1"` (log + still create the Message row), and stub `fetchWhatsAppMedia` to return a local audio file. Revert after.
 - Webhook: POST Meta-shaped JSON to `/api/whatsapp/webhook`: `{"entry":[{"changes":[{"value":{"messages":[{"from":"1555...","id":"wamid.x","type":"text","text":{"body":"1. toda"}}]}}]}]}`. Audio replies use `type: "audio"` with `audio: {id, mime_type}`. Signature validation is skipped outside production; sender digits are normalized to `+E.164`.
