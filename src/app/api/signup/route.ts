@@ -23,15 +23,27 @@ const bodySchema = z.object({
   language: z.enum(LANGUAGES.map((l) => l.code) as [string, ...string[]]),
 });
 
+const CODE_TTL_MS = 10 * 60_000;
+const RESEND_COOLDOWN_MS = 30_000;
+
 export async function POST(request: NextRequest) {
-  const parsed = bodySchema.safeParse(await request.json());
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
   const { phone, timezone, language } = parsed.data;
 
+  const existing = await prisma.user.findUnique({ where: { phone }, select: { verifyExpiresAt: true } });
+  const lastSentAt = existing?.verifyExpiresAt ? existing.verifyExpiresAt.getTime() - CODE_TTL_MS : 0;
+  if (Date.now() - lastSentAt < RESEND_COOLDOWN_MS) {
+    return Response.json(
+      { error: "We just sent you a code — give it 30 seconds before requesting another." },
+      { status: 429 }
+    );
+  }
+
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expires = new Date(Date.now() + 10 * 60_000);
+  const expires = new Date(Date.now() + CODE_TTL_MS);
   const user = await prisma.user.upsert({
     where: { phone },
     create: { phone, timezone, language, verifyCode: code, verifyExpiresAt: expires },
@@ -42,6 +54,7 @@ export async function POST(request: NextRequest) {
     await sendVerifyCode({ userId: user.id, to: phone, code });
   } catch (err) {
     console.error("verify message failed", err);
+    await prisma.user.update({ where: { id: user.id }, data: { verifyCode: null, verifyExpiresAt: null } });
     return Response.json(
       { error: "Couldn't reach that number on WhatsApp — double-check it and try again." },
       { status: 502 }

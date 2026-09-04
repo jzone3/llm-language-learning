@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   const user = await prisma.user.findUnique({ where: { phone } });
   if (!user?.verified || !user.placementToken || user.placementToken !== token) {
-    return Response.json({ error: "Not authorized" }, { status: 403 });
+    return Response.json({ error: "This signup session has expired — refresh the page and start again." }, { status: 403 });
   }
   if (user.placementDone) {
     return Response.json({ ok: true, level: user.level, sendHour: user.sendHour, language: user.language });

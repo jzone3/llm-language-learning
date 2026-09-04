@@ -5,29 +5,34 @@ import crypto from "crypto";
 
 const bodySchema = z.object({
   phone: z.string(),
-  code: z.string().length(6),
+  code: z.string().regex(/^\d{6}$/),
 });
+
+const WRONG_CODE = "That code doesn't match — check the WhatsApp message and try again.";
 
 export async function POST(request: NextRequest) {
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) {
-    return Response.json({ error: "Invalid request" }, { status: 400 });
+    return Response.json({ error: "Enter the 6-digit code from the WhatsApp message." }, { status: 400 });
   }
   const { phone, code } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { phone } });
   if (!user || !user.verifyCode) {
-    return Response.json({ error: "Wrong code" }, { status: 400 });
+    return Response.json({ error: WRONG_CODE }, { status: 400 });
   }
   if (user.verifyExpiresAt && user.verifyExpiresAt < new Date()) {
-    return Response.json({ error: "Code expired — sign up again to get a new one." }, { status: 400 });
+    return Response.json({ error: "That code has expired — tap “Resend code” to get a new one." }, { status: 400 });
   }
   if (user.verifyAttempts >= 5) {
-    return Response.json({ error: "Too many attempts — sign up again to get a new code." }, { status: 429 });
+    return Response.json(
+      { error: "Too many wrong attempts — tap “Resend code” to get a fresh one." },
+      { status: 429 }
+    );
   }
   if (user.verifyCode !== code) {
     await prisma.user.update({ where: { id: user.id }, data: { verifyAttempts: { increment: 1 } } });
-    return Response.json({ error: "Wrong code" }, { status: 400 });
+    return Response.json({ error: WRONG_CODE }, { status: 400 });
   }
 
   // Single-use token authorizing the website placement flow for this browser.
