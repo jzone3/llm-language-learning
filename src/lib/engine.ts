@@ -3,7 +3,7 @@ import { prisma } from "./db";
 import { review, Rating } from "./fsrs";
 import { generateSentence, gradeAnswers, optimizeCadence, pickNextWords } from "./llm";
 import { sendWhatsApp } from "./whatsapp";
-import { LANGUAGE_NAMES } from "./words";
+import { LANGUAGE_NAMES, isRtl } from "./words";
 
 export type QuizItem = { cardId: string; prompt: string; answer: string };
 
@@ -64,9 +64,14 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
       lines.push(newWords.length === 1 ? "New word:" : "New words:");
       for (const w of newWords) {
         const { sentence, sentence_en } = await generateSentence(user.language, w.term, w.translation);
-        const translit = w.transliteration ? ` (${w.transliteration})` : "";
-        lines.push(`• ${w.term}${translit} = ${w.translation}`);
-        lines.push(`  "${sentence}" (${sentence_en})`);
+        // One field per line: mixing RTL script with Latin text on a single
+        // line scrambles the visual order in WhatsApp.
+        lines.push("");
+        lines.push(w.term);
+        if (w.transliteration) lines.push(w.transliteration);
+        lines.push(w.translation);
+        lines.push(sentence);
+        lines.push(sentence_en);
         newWordIds.push(w.id);
       }
     }
@@ -203,16 +208,20 @@ export async function handleReply(user: User, text: string): Promise<string> {
 
   const feedbackLines: string[] = [];
   for (let i = 0; i < items.length; i++) {
-    const card = await prisma.card.findUnique({ where: { id: items[i].cardId } });
+    const card = await prisma.card.findUnique({ where: { id: items[i].cardId }, include: { word: true } });
     if (card) {
       await prisma.card.update({
         where: { id: card.id },
         data: review(card, graded[i].correct ? Rating.Good : Rating.Again, now),
       });
     }
-    feedbackLines.push(
-      graded[i].correct ? `${i + 1}. ✓ ${items[i].answer}` : `${i + 1}. ✗ ${items[i].answer} — ${graded[i].feedback}`
-    );
+    const mark = graded[i].correct ? `${i + 1}. ✓` : `${i + 1}. ✗ ${graded[i].feedback}`;
+    if (card && isRtl(user.language)) {
+      feedbackLines.push(mark, card.word.term);
+      if (card.word.transliteration) feedbackLines.push(card.word.transliteration);
+    } else {
+      feedbackLines.push(`${mark} ${items[i].answer}`);
+    }
   }
 
   // Streak: increment once per local day.
