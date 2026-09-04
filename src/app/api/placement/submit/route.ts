@@ -70,6 +70,8 @@ export async function POST(request: NextRequest) {
     data: { placementDone: true, level, placementToken: null },
   });
 
+  // The welcome is free-form and fails outside the 24h window (the learner has
+  // only ever received the verify-code template); it must not block the lesson.
   try {
     await sendWhatsApp({
       userId: user.id,
@@ -77,6 +79,10 @@ export async function POST(request: NextRequest) {
       body: "🎉 You're in. Here's your first quiz — guess freely, wrong guesses still count as learning. Reply STOP anytime.",
       kind: "other",
     });
+  } catch (err) {
+    console.error("welcome send failed", err);
+  }
+  try {
     await sendLesson(updated, { includeNewWords: true });
   } catch (err) {
     console.error("first lesson send failed", err);

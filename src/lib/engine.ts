@@ -2,7 +2,7 @@ import type { Card, Message, User, Word } from "@prisma/client";
 import { prisma } from "./db";
 import { review, Rating } from "./fsrs";
 import { generateSentence, gradeAnswers, optimizeCadence, pickNextWords } from "./llm";
-import { sendWhatsApp } from "./whatsapp";
+import { sendTemplate, sendWhatsApp, templateParamText } from "./whatsapp";
 import { LANGUAGE_NAMES, isRtl } from "./words";
 
 /** Free-recall review of an existing card: English prompt → produce the target word. */
@@ -124,6 +124,31 @@ export function formatQuiz(items: QuizItem[], words: Map<string, Word>, streak: 
 }
 
 /**
+ * Deliver the quiz. Free-form text by default; when WHATSAPP_QUIZ_TEMPLATE names
+ * an approved UTILITY template with a single {{1}} body variable, send through it
+ * instead so the message is deliverable outside the 24h customer-service window
+ * (template parameters can't contain newlines, so the quiz is flattened to one line).
+ */
+async function sendQuiz(params: {
+  userId: string;
+  to: string;
+  body: string;
+  quizText: string;
+  quizItems: QuizItem[];
+}) {
+  const { quizText, ...rest } = params;
+  const template = process.env.WHATSAPP_QUIZ_TEMPLATE;
+  if (!template) return sendWhatsApp({ ...rest, kind: "quiz" });
+  return sendTemplate(
+    params.to,
+    template,
+    process.env.WHATSAPP_QUIZ_TEMPLATE_LANG ?? "en",
+    [{ type: "body", parameters: [{ type: "text", text: templateParamText(quizText) }] }],
+    { userId: params.userId, kind: "quiz", body: params.body, quizItems: params.quizItems }
+  );
+}
+
+/**
  * Build and send the morning (or afternoon) quiz for a user. Quiz-only: due cards
  * are free-recall questions, unseen words are guess-first multiple choice. The
  * study material is the feedback the learner gets after replying.
@@ -163,11 +188,12 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
   if (quizItems.length === 0) return null;
 
   const body = formatQuiz(quizItems, new Map(newWords.map((w) => [w.id, w])), user.streak);
-  const message = await sendWhatsApp({
+  const message = await sendQuiz({
     userId: user.id,
     to: user.phone,
     body,
-    kind: "quiz",
+    // The template's fixed text already says how to reply.
+    quizText: body.slice(0, body.lastIndexOf(`\n\n${CLOSING_LINE}`)),
     quizItems,
   });
 

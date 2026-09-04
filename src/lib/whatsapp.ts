@@ -133,6 +133,74 @@ export async function sendVerifyCode(params: { userId: string; to: string; code:
   });
 }
 
+export type TemplateComponent =
+  | { type: "header"; parameters: { type: "image"; image: { link: string } | { id: string } }[] }
+  | { type: "body"; parameters: { type: "text"; text: string }[] }
+  | {
+      type: "button";
+      sub_type: "url" | "quick_reply";
+      index: string;
+      parameters: { type: "text" | "payload"; text?: string; payload?: string }[];
+    };
+
+/**
+ * Make a string safe to use as a template parameter value. The Cloud API rejects
+ * parameters containing newlines, tabs, or more than 4 consecutive spaces
+ * ("Param text cannot have new-line/tab characters or more than 4 consecutive spaces").
+ * Each original line is wrapped in a Unicode bidi isolate (FSI…PDI) so RTL terms and
+ * Latin text keep their visual order once they share a line.
+ */
+export function templateParamText(text: string, lineSeparator = " | "): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\t/g, " ").replace(/ {2,}/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .map((line) => `\u2068${line}\u2069`)
+    .join(lineSeparator);
+}
+
+/**
+ * Send an approved message template (e.g. a UTILITY template for the daily quiz)
+ * and optionally log it as an outbound Message. Templates are the only way to
+ * message a learner outside the 24h customer-service window.
+ */
+export async function sendTemplate(
+  to: string,
+  name: string,
+  languageCode: string,
+  components: TemplateComponent[],
+  log?: { userId: string; kind: string; body: string; quizItems?: object[] }
+) {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: to.replace(/^\+/, ""),
+      type: "template",
+      template: { name, language: { code: languageCode }, components },
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`WhatsApp template "${name}" send failed: ${res.status} ${detail}`);
+  }
+  if (!log) return null;
+  return prisma.message.create({
+    data: {
+      userId: log.userId,
+      direction: "out",
+      kind: log.kind,
+      body: log.body,
+      quizItems: log.quizItems ? JSON.stringify(log.quizItems) : null,
+    },
+  });
+}
+
 /** Download an inbound media file (e.g. a voice note) by its Cloud API media id. */
 export async function fetchWhatsAppMedia(mediaId: string): Promise<{ data: ArrayBuffer; contentType: string }> {
   const metaRes = await fetch(`${GRAPH_BASE}/${mediaId}`, {
