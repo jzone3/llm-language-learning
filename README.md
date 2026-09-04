@@ -43,4 +43,4 @@ npm run dev
 
 - Business-initiated sends outside the 24h reply window require an approved WhatsApp message template (Meta business verification needed). The daily lesson will need a template once users stop replying within 24h; user-initiated replies keep the window open.
 - The first 1,000 service conversations per month are free on the Cloud API.
-- Deploy: Vercel project linked to this repo; `vercel.json` runs `prisma migrate deploy` during build. Set `DATABASE_URL`, `OPENAI_API_KEY`, `WHATSAPP_*`, `CRON_SECRET` as project env vars, then seed once with `npx tsx prisma/seed.ts` against the prod `DATABASE_URL`.
+- Deploy: Vercel project linked to this repo with a Neon Postgres store attached (injects `DATABASE_URL` / `DATABASE_URL_UNPOOLED`); `vercel.json` runs `prisma migrate deploy` and the idempotent word-list seed during build, so edits to `src/lib/words.ts` ship on the next deploy. Set `OPENAI_API_KEY`, `WHATSAPP_*`, `CRON_SECRET` as project env vars. Deployment protection must be off so Meta can reach the webhook.
