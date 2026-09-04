@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LANGUAGES } from "@/lib/words";
+import { LanguageSelect } from "@/components/LanguageSelect";
 
 type PlacementItem = { wordId: string; term: string; options: string[] };
 
@@ -176,17 +176,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
       )}
     <form onSubmit={stage === "phone" ? submitPhone : submitCode} className="mt-4 flex flex-col gap-3">
       {stage === "phone" && (
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          className="w-fit rounded-xl border border-neutral-300 bg-white px-4 py-3 text-base outline-none focus:border-neutral-900"
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.flag} {l.name}
-            </option>
-          ))}
-        </select>
+        <LanguageSelect value={language} onChange={setLanguage} disabled={loading} />
       )}
       <div className="flex flex-col sm:flex-row gap-3">
       {stage === "phone" ? (
