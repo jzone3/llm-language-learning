@@ -117,17 +117,20 @@ async function handleInbound(message: InboundMessage) {
   }
 
   const { text: feedback, revealedWords } = await handleReply(user, body);
-  await reply(user.id, phone, feedback);
+  if (!feedback) return; // duplicate delivery; another invocation already answered
+  const delivered = await reply(user.id, phone, feedback);
   // A picture of the meaning would give away the guess-first question, so the
   // illustration accompanies the reveal. Deferred past the response so Meta
   // gets its 200 quickly and doesn't retry the webhook.
-  if (revealedWords.length > 0) after(() => sendNewWordImages(user, revealedWords));
+  if (delivered && revealedWords.length > 0) after(() => sendNewWordImages(user, revealedWords));
 }
 
-async function reply(userId: string, to: string, body: string) {
+async function reply(userId: string, to: string, body: string): Promise<boolean> {
   try {
     await sendWhatsApp({ userId, to, body, kind: "other" });
+    return true;
   } catch (err) {
     console.error("webhook reply send failed", err);
+    return false;
   }
 }

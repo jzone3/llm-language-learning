@@ -1,4 +1,4 @@
-import type { Card, User, Word } from "@prisma/client";
+import type { Card, Message, User, Word } from "@prisma/client";
 import { prisma } from "./db";
 import { review, Rating } from "./fsrs";
 import { generateSentence, gradeAnswers, optimizeCadence, pickNextWords } from "./llm";
@@ -246,7 +246,10 @@ export type ReplyResult = {
   revealedWords: Word[];
 };
 
-/** Handle an inbound reply: grade, update FSRS + streak, respond. */
+/**
+ * Handle an inbound reply: grade, update FSRS + streak, respond.
+ * Returns empty `text` when another delivery of the same reply already claimed the quiz.
+ */
 export async function handleReply(user: User, text: string): Promise<ReplyResult> {
   const pending = await prisma.message.findFirst({
     where: { userId: user.id, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
@@ -261,9 +264,25 @@ export async function handleReply(user: User, text: string): Promise<ReplyResult
     return { text: "No quiz pending — your next words arrive tomorrow morning. 📚", revealedWords: [] };
   }
 
-  // Mark answered up front so a webhook retry can't re-grade the same quiz.
-  await prisma.message.update({ where: { id: pending.id }, data: { answered: true } });
+  // Atomically claim the quiz so concurrent deliveries grade it once.
+  const claimed = await prisma.message.updateMany({
+    where: { id: pending.id, answered: false },
+    data: { answered: true },
+  });
+  if (claimed.count === 0) return { text: "", revealedWords: [] };
 
+  try {
+    return await gradePending(user, pending, text);
+  } catch (err) {
+    // Release the claim so a webhook retry can grade it.
+    await prisma.message
+      .update({ where: { id: pending.id }, data: { answered: false } })
+      .catch((e) => console.error("failed to release quiz claim", e));
+    throw err;
+  }
+}
+
+async function gradePending(user: User, pending: Message, text: string): Promise<ReplyResult> {
   const items = parseQuizItems(pending.quizItems!);
   const graded = items.length > 0 ? await gradeAnswers(user.language, items, text) : [];
   const now = new Date();
