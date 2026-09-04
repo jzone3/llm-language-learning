@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { handleReply } from "@/lib/engine";
+import { findPendingQuiz, handleReply, parseQuizItems } from "@/lib/engine";
 import { sendWhatsApp, fetchWhatsAppMedia, validateWebhookSignature } from "@/lib/whatsapp";
-import { transcribeAudio } from "@/lib/llm";
+import { transcribeAudio, transcriptionPrompt } from "@/lib/llm";
 
 /** Meta webhook verification handshake. */
 export async function GET(request: NextRequest) {
@@ -32,6 +32,9 @@ type StatusUpdate = {
 };
 
 type ChangeValue = { messages?: InboundMessage[]; statuses?: StatusUpdate[] };
+
+/** Message types a learner might send as an answer that we can't read; reactions etc. are ignored silently. */
+const UNREADABLE_TYPES = new Set(["image", "video", "document", "sticker", "location", "contacts", "unsupported"]);
 
 export async function POST(request: NextRequest) {
   const raw = await request.text();
@@ -80,13 +83,22 @@ async function handleInbound(message: InboundMessage) {
   const user = await prisma.user.findUnique({ where: { phone } });
   if (!user) return;
 
+  // Meta redelivers a message when it doesn't get a timely 200; never process a wamid twice.
+  if (await prisma.message.findUnique({ where: { waMessageId: message.id }, select: { id: true } })) return;
+
+  if (UNREADABLE_TYPES.has(message.type)) {
+    await reply(user.id, phone, "I can only read text or a voice note — reply with your answers that way. 🎙️");
+    return;
+  }
+
   let body = message.type === "text" ? (message.text?.body ?? "").trim() : "";
 
   // Voice-note reply: transcribe, then grade the transcript like a text answer.
   if (!body && message.type === "audio" && message.audio?.id) {
     try {
-      const media = await fetchWhatsAppMedia(message.audio.id);
-      body = await transcribeAudio(media.data, media.contentType, user.language);
+      const [media, pending] = await Promise.all([fetchWhatsAppMedia(message.audio.id), findPendingQuiz(user.id)]);
+      const prompt = pending?.quizItems ? transcriptionPrompt(user.language, parseQuizItems(pending.quizItems)) : undefined;
+      body = await transcribeAudio(media.data, media.contentType, prompt);
     } catch (err) {
       console.error("voice transcription failed", err);
       await reply(user.id, phone, "Couldn't process that voice note — try again or reply by text. 🎙️");
@@ -112,7 +124,7 @@ async function handleInbound(message: InboundMessage) {
     return;
   }
 
-  const feedback = await handleReply(user, body);
+  const feedback = await handleReply(user, body, message.id);
   await reply(user.id, phone, feedback);
 }
 

@@ -241,14 +241,11 @@ export async function refreshWordQueue(user: User) {
 }
 
 /** Handle an inbound reply: grade, update FSRS + streak, respond. */
-export async function handleReply(user: User, text: string): Promise<string> {
-  const pending = await prisma.message.findFirst({
-    where: { userId: user.id, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
-    orderBy: { createdAt: "desc" },
-  });
+export async function handleReply(user: User, text: string, waMessageId?: string): Promise<string> {
+  const pending = await findPendingQuiz(user.id);
 
   await prisma.message.create({
-    data: { userId: user.id, direction: "in", kind: "reply", body: text },
+    data: { userId: user.id, direction: "in", kind: "reply", body: text, waMessageId },
   });
 
   if (!pending) {
@@ -316,6 +313,20 @@ export async function handleReply(user: User, text: string): Promise<string> {
   return [summary, ...blocks.map((b) => b.join("\n"))].join(multiLine ? "\n\n" : "\n");
 }
 
+/** The latest quiz the user hasn't answered yet, if any. */
+export function findPendingQuiz(userId: string) {
+  return prisma.message.findFirst({
+    where: { userId, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** Parse persisted quiz items; entries from before `type` existed are reviews. */
+export function parseQuizItems(raw: string): QuizItem[] {
+  const parsed = JSON.parse(raw) as (QuizItem | Omit<ReviewQuizItem, "type">)[];
+  return parsed.map((item) => ("type" in item ? item : { type: "review", ...item }));
+}
+
 /** Term (and transliteration) on their own lines — never mixed with Latin text. */
 function termLines(word: Word): string[] {
   return word.transliteration ? [word.term, word.transliteration] : [word.term];
@@ -352,12 +363,6 @@ function blankCard(userId: string, wordId: string, now: Date): Card {
     lastReview: null,
     createdAt: now,
   };
-}
-
-/** Parse persisted quiz items; entries from before `type` existed are reviews. */
-function parseQuizItems(raw: string): QuizItem[] {
-  const parsed = JSON.parse(raw) as (QuizItem | Omit<ReviewQuizItem, "type">)[];
-  return parsed.map((item) => ("type" in item ? item : { type: "review", ...item }));
 }
 
 /** Called hourly by cron: send due lessons and periodically re-optimize cadence. */

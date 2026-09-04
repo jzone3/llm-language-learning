@@ -80,6 +80,8 @@ model Message {
   // { type: "review", cardId, prompt, answer } | { type: "new", wordId, prompt, answer, options, correctIndex }
   quizItems String?
   answered  Boolean  @default(false)
+  // Inbound only: WhatsApp message id (wamid), so webhook retries aren't processed twice
+  waMessageId String? @unique
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 }
