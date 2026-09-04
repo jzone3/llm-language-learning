@@ -1,8 +1,13 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { handleReply } from "@/lib/engine";
+import { findPendingQuiz, handleReply, parseQuizItems } from "@/lib/engine";
+import { sendNewWordImages } from "@/lib/images";
 import { sendWhatsApp, fetchWhatsAppMedia, validateWebhookSignature } from "@/lib/whatsapp";
-import { transcribeAudio } from "@/lib/llm";
+import { transcribeAudio, transcriptionPrompt } from "@/lib/llm";
+
+// Image generation for revealed words runs after the 200 (see `after`) and needs headroom.
+export const maxDuration = 60;
 
 /** Meta webhook verification handshake. */
 export async function GET(request: NextRequest) {
@@ -32,6 +37,9 @@ type StatusUpdate = {
 };
 
 type ChangeValue = { messages?: InboundMessage[]; statuses?: StatusUpdate[] };
+
+/** Message types a learner might send as an answer that we can't read; reactions etc. are ignored silently. */
+const UNREADABLE_TYPES = new Set(["image", "video", "document", "sticker", "location", "contacts", "unsupported"]);
 
 export async function POST(request: NextRequest) {
   const raw = await request.text();
@@ -82,11 +90,31 @@ async function handleInbound(message: InboundMessage) {
 
   let body = message.type === "text" ? (message.text?.body ?? "").trim() : "";
 
+  // Meta redelivers a message when it doesn't get a timely 200. Inserting the inbound row first
+  // claims the wamid (unique), so a redelivery — even a concurrent one — is a no-op from here on.
+  let inbound: { id: string };
+  try {
+    inbound = await prisma.message.create({
+      data: { userId: user.id, direction: "in", kind: message.type === "text" || message.type === "audio" ? "reply" : message.type, body, waMessageId: message.id },
+      select: { id: true },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return;
+    throw err;
+  }
+
+  if (UNREADABLE_TYPES.has(message.type)) {
+    await reply(user.id, phone, "I can only read text or a voice note — reply with your answers that way. 🎙️");
+    return;
+  }
+
   // Voice-note reply: transcribe, then grade the transcript like a text answer.
   if (!body && message.type === "audio" && message.audio?.id) {
     try {
-      const media = await fetchWhatsAppMedia(message.audio.id);
-      body = await transcribeAudio(media.data, media.contentType, user.language);
+      const [media, pending] = await Promise.all([fetchWhatsAppMedia(message.audio.id), findPendingQuiz(user.id)]);
+      const prompt = pending?.quizItems ? transcriptionPrompt(user.language, parseQuizItems(pending.quizItems)) : undefined;
+      body = await transcribeAudio(media.data, media.contentType, prompt);
+      await prisma.message.update({ where: { id: inbound.id }, data: { body } });
     } catch (err) {
       console.error("voice transcription failed", err);
       await reply(user.id, phone, "Couldn't process that voice note — try again or reply by text. 🎙️");
@@ -112,14 +140,21 @@ async function handleInbound(message: InboundMessage) {
     return;
   }
 
-  const feedback = await handleReply(user, body);
-  await reply(user.id, phone, feedback);
+  const { text: feedback, revealedWords } = await handleReply(user, body);
+  if (!feedback) return; // quiz claimed concurrently by another reply
+  const delivered = await reply(user.id, phone, feedback);
+  // A picture of the meaning would give away the guess-first question, so the
+  // illustration accompanies the reveal. Deferred past the response so Meta
+  // gets its 200 quickly and doesn't retry the webhook.
+  if (delivered && revealedWords.length > 0) after(() => sendNewWordImages(user, revealedWords));
 }
 
-async function reply(userId: string, to: string, body: string) {
+async function reply(userId: string, to: string, body: string): Promise<boolean> {
   try {
     await sendWhatsApp({ userId, to, body, kind: "other" });
+    return true;
   } catch (err) {
     console.error("webhook reply send failed", err);
+    return false;
   }
 }

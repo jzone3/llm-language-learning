@@ -4,6 +4,9 @@ import { prisma } from "@/lib/db";
 import { sendLesson } from "@/lib/engine";
 import { sendWhatsApp } from "@/lib/whatsapp";
 
+// first lesson may generate word images (~10s each, in parallel) before responding
+export const maxDuration = 60;
+
 const bodySchema = z.object({
   phone: z.string(),
   token: z.string().min(1),
@@ -67,13 +70,19 @@ export async function POST(request: NextRequest) {
     data: { placementDone: true, level, placementToken: null },
   });
 
+  // The welcome is free-form and fails outside the 24h window (the learner has
+  // only ever received the verify-code template); it must not block the lesson.
   try {
     await sendWhatsApp({
       userId: user.id,
       to: user.phone,
-      body: `🎉 You're in! Level: ${level}. Here's your first lesson — reply to tomorrow morning's quiz to build your streak. You can answer by text or voice note.`,
+      body: "🎉 You're in. Here's your first quiz — guess freely, wrong guesses still count as learning. Reply STOP anytime.",
       kind: "other",
     });
+  } catch (err) {
+    console.error("welcome send failed", err);
+  }
+  try {
     await sendLesson(updated, { includeNewWords: true });
   } catch (err) {
     console.error("first lesson send failed", err);

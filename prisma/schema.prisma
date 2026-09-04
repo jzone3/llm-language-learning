@@ -27,6 +27,7 @@ model User {
   verifyAttempts  Int       @default(0)
   optedOut        Boolean   @default(false)
   newWordsPerDay  Int       @default(2)
+  wantsImages     Boolean   @default(true) // send a generated picture with each new word
   // Placement + personalization
   level           String    @default("beginner") // "beginner" | "intermediate" | "advanced"
   placementDone   Boolean   @default(false)
@@ -45,6 +46,7 @@ model Word {
   translation     String
   transliteration String? // romanization for non-Latin scripts
   kind            String  @default("word") // "word" | "phrase" | "slang"
+  imageUrl        String? // cached public URL of the generated illustration (Vercel Blob)
   cards           Card[]
 
   @@unique([language, rank])
@@ -76,9 +78,13 @@ model Message {
   direction String // "out" | "in"
   kind      String // "quiz" | "new_words" | "reply" | "verify" | "other"
   body      String
-  // For quiz messages: JSON array of { cardId, prompt, answer }
+  // For quiz messages: JSON array of QuizItem (src/lib/engine.ts) —
+  // { type: "review", cardId, prompt, answer } | { type: "new", wordId, prompt, answer, options, correctIndex }
   quizItems String?
+  mediaUrl  String? // for image messages: the public URL that was sent
   answered  Boolean  @default(false)
+  // Inbound only: WhatsApp message id (wamid), so webhook retries aren't processed twice
+  waMessageId String? @unique
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 }

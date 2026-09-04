@@ -1,13 +1,29 @@
-import type { User } from "@prisma/client";
+import type { Card, Message, User, Word } from "@prisma/client";
 import { prisma } from "./db";
 import { review, Rating } from "./fsrs";
 import { generateSentence, gradeAnswers, optimizeCadence, pickNextWords } from "./llm";
-import { sendWhatsApp } from "./whatsapp";
+import { sendTemplate, sendWhatsApp, templateParamText } from "./whatsapp";
 import { LANGUAGE_NAMES, isRtl } from "./words";
 
-export type QuizItem = { cardId: string; prompt: string; answer: string };
+/** Free-recall review of an existing card: English prompt → produce the target word. */
+export type ReviewQuizItem = { type: "review"; cardId: string; prompt: string; answer: string };
+/**
+ * Guess-first introduction of an unseen word: the target word is shown and the
+ * learner picks its English meaning from `options`. No card exists until graded.
+ */
+export type NewQuizItem = {
+  type: "new";
+  wordId: string;
+  prompt: string;
+  answer: string;
+  options: string[];
+  correctIndex: number;
+};
+export type QuizItem = ReviewQuizItem | NewQuizItem;
 
 const MAX_QUIZ_ITEMS = 4;
+const OPTION_LETTERS = ["a", "b", "c"];
+const CLOSING_LINE = "Reply with your answers (text or voice note).";
 const STREAK_TO_UNLOCK_SECOND_MESSAGE = 4;
 
 export function localParts(timezone: string, date = new Date()) {
@@ -34,7 +50,109 @@ function startOfLocalDayUtc(timezone: string, date = new Date()): Date {
   return d;
 }
 
-/** Build and send the morning (or afternoon) lesson for a user. */
+/** Small deterministic PRNG (mulberry32) seeded from a string. */
+function seededRandom(seed: string) {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Build the a/b/c meanings for a guess-first item: the real translation plus two
+ * distractors from the same language (same `kind` when enough exist), chosen and
+ * shuffled deterministically per word so re-sends show the same options.
+ */
+export function buildOptions(word: Word, pool: Word[]): { options: string[]; correctIndex: number } {
+  const rand = seededRandom(word.id);
+  const meanings = new Set(splitMeanings(word.translation));
+  const others = pool.filter((w) => w.id !== word.id && !splitMeanings(w.translation).some((m) => meanings.has(m)));
+  const sameKind = others.filter((w) => w.kind === word.kind);
+  const candidates = [...(sameKind.length >= 2 ? sameKind : others)].sort((a, b) => a.rank - b.rank);
+
+  const distractors: string[] = [];
+  while (distractors.length < 2 && candidates.length > 0) {
+    const [picked] = candidates.splice(Math.floor(rand() * candidates.length), 1);
+    const pickedMeanings = splitMeanings(picked.translation);
+    if (pickedMeanings.some((m) => meanings.has(m))) continue;
+    distractors.push(picked.translation);
+    pickedMeanings.forEach((m) => meanings.add(m));
+  }
+
+  const options = [word.translation, ...distractors];
+  for (let i = options.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [options[i], options[j]] = [options[j], options[i]];
+  }
+  return { options, correctIndex: options.indexOf(word.translation) };
+}
+
+/** "hello / peace" → ["hello", "peace"], lowercased. */
+function splitMeanings(translation: string): string[] {
+  return translation.split(" / ").map((m) => m.trim().toLowerCase());
+}
+
+/** Render the outbound quiz body: optional streak line, numbered questions, closing line. */
+export function formatQuiz(items: QuizItem[], words: Map<string, Word>, streak: number): string {
+  const lines: string[] = [];
+  if (streak >= 2) lines.push(`🔥 ${streak}-day streak`, "");
+  items.forEach((item, i) => {
+    if (item.type === "review") {
+      lines.push(`${i + 1}. ${item.prompt}`);
+      return;
+    }
+    const word = words.get(item.wordId);
+    // One field per line: mixing RTL script with Latin text on a single line
+    // scrambles the visual order in WhatsApp.
+    lines.push(`${i + 1}. New — guess the meaning:`);
+    if (word) {
+      lines.push(word.term);
+      if (word.transliteration) lines.push(word.transliteration);
+    }
+    lines.push(item.options.map((o, j) => `${OPTION_LETTERS[j]}) ${o}`).join("  "));
+  });
+  lines.push("", CLOSING_LINE);
+  return lines.join("\n");
+}
+
+/**
+ * Deliver the quiz. Free-form text by default; when WHATSAPP_QUIZ_TEMPLATE names
+ * an approved UTILITY template with a single {{1}} body variable, send through it
+ * instead so the message is deliverable outside the 24h customer-service window
+ * (template parameters can't contain newlines, so the quiz is flattened to one line).
+ */
+async function sendQuiz(params: {
+  userId: string;
+  to: string;
+  body: string;
+  quizText: string;
+  quizItems: QuizItem[];
+}) {
+  const { quizText, ...rest } = params;
+  const template = process.env.WHATSAPP_QUIZ_TEMPLATE;
+  if (!template) return sendWhatsApp({ ...rest, kind: "quiz" });
+  return sendTemplate(
+    params.to,
+    template,
+    process.env.WHATSAPP_QUIZ_TEMPLATE_LANG ?? "en",
+    [{ type: "body", parameters: [{ type: "text", text: templateParamText(quizText) }] }],
+    { userId: params.userId, kind: "quiz", body: params.body, quizItems: params.quizItems }
+  );
+}
+
+/**
+ * Build and send the morning (or afternoon) quiz for a user. Quiz-only: due cards
+ * are free-recall questions, unseen words are guess-first multiple choice. The
+ * study material is the feedback the learner gets after replying.
+ */
 export async function sendLesson(user: User, opts: { includeNewWords: boolean }) {
   const now = new Date();
   const dueCards = await prisma.card.findMany({
@@ -45,79 +163,42 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
   });
 
   const quizItems: QuizItem[] = dueCards.map((c) => ({
+    type: "review",
     cardId: c.id,
     prompt: `"${c.word.translation}" in ${LANGUAGE_NAMES[user.language] ?? user.language}?`,
     answer: c.word.transliteration ? `${c.word.term} (${c.word.transliteration})` : c.word.term,
   }));
 
-  const lines: string[] = [];
-  if (quizItems.length > 0) {
-    lines.push(`Quiz — reply with your answers:`);
-    quizItems.forEach((q, i) => lines.push(`${i + 1}. ${q.prompt}`));
-  }
-
-  const newWordIds: string[] = [];
-  if (opts.includeNewWords) {
-    const newWords = await selectNewWords(user);
-    if (newWords.length > 0) {
-      lines.push("");
-      lines.push(newWords.length === 1 ? "New word:" : "New words:");
-      for (const w of newWords) {
-        const { sentence, sentence_en } = await generateSentence(user.language, w.term, w.translation);
-        // One field per line: mixing RTL script with Latin text on a single
-        // line scrambles the visual order in WhatsApp.
-        lines.push("");
-        lines.push(w.term);
-        if (w.transliteration) lines.push(w.transliteration);
-        lines.push(w.translation);
-        lines.push(sentence);
-        lines.push(sentence_en);
-        newWordIds.push(w.id);
-      }
+  const newWords = opts.includeNewWords ? await selectNewWords(user) : [];
+  if (newWords.length > 0) {
+    const pool = await prisma.word.findMany({ where: { language: user.language } });
+    for (const w of newWords) {
+      const { options, correctIndex } = buildOptions(w, pool);
+      quizItems.push({
+        type: "new",
+        wordId: w.id,
+        prompt: w.transliteration ? `Meaning of ${w.term} (${w.transliteration})?` : `Meaning of ${w.term}?`,
+        answer: w.translation,
+        options,
+        correctIndex,
+      });
     }
   }
 
-  if (lines.length === 0) return null;
+  if (quizItems.length === 0) return null;
 
-  const streakBit = user.streak >= 2 ? ` 🔥${user.streak}` : "";
-  const body = `☀️ VocabText${streakBit}\n${lines.join("\n")}`;
-  const message = await sendWhatsApp({
+  const body = formatQuiz(quizItems, new Map(newWords.map((w) => [w.id, w])), user.streak);
+  const message = await sendQuiz({
     userId: user.id,
     to: user.phone,
     body,
-    kind: "quiz",
+    // The template's fixed text already says how to reply.
+    quizText: body.slice(0, body.lastIndexOf(`\n\n${CLOSING_LINE}`)),
     quizItems,
   });
 
-  // Persist new-word cards only after the message is confirmed sent, so an
-  // undelivered lesson doesn't consume words the user never saw.
-  for (const wordId of newWordIds) {
-    await prisma.card.create({
-      data: {
-        userId: user.id,
-        wordId,
-        // New words enter learning immediately so they show up in tomorrow's quiz.
-        ...review(
-          {
-            id: "",
-            userId: user.id,
-            wordId,
-            due: now,
-            stability: 0,
-            difficulty: 0,
-            reps: 0,
-            lapses: 0,
-            learningSteps: 0,
-            state: 0,
-            lastReview: null,
-            createdAt: now,
-          },
-          Rating.Good,
-          now
-        ),
-      },
-    });
-  }
+  // New words get no Card until the reply is graded (see handleReply), so an
+  // unanswered quiz doesn't consume words the learner never engaged with.
   return message;
 }
 
@@ -184,44 +265,81 @@ export async function refreshWordQueue(user: User) {
   }
 }
 
-/** Handle an inbound reply: grade, update FSRS + streak, respond. */
-export async function handleReply(user: User, text: string): Promise<string> {
-  const pending = await prisma.message.findFirst({
-    where: { userId: user.id, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
-    orderBy: { createdAt: "desc" },
-  });
+export type ReplyResult = {
+  /** Feedback text to send back. */
+  text: string;
+  /** Words revealed for the first time in this reply (guess-first items); illustrate these after the text. */
+  revealedWords: Word[];
+};
 
-  await prisma.message.create({
-    data: { userId: user.id, direction: "in", kind: "reply", body: text },
-  });
+/**
+ * Handle an inbound reply (already persisted by the webhook): grade, update FSRS + streak, respond.
+ * Returns empty `text` when another delivery of the same reply already claimed the quiz.
+ */
+export async function handleReply(user: User, text: string): Promise<ReplyResult> {
+  const pending = await findPendingQuiz(user.id);
 
   if (!pending) {
-    return "No quiz pending — your next words arrive tomorrow morning. 📚";
+    return { text: "No quiz pending — your next words arrive tomorrow morning. 📚", revealedWords: [] };
   }
 
-  // Mark answered up front so a webhook retry can't re-grade the same quiz.
-  await prisma.message.update({ where: { id: pending.id }, data: { answered: true } });
+  // Atomically claim the quiz so concurrent deliveries grade it once.
+  const claimed = await prisma.message.updateMany({
+    where: { id: pending.id, answered: false },
+    data: { answered: true },
+  });
+  if (claimed.count === 0) return { text: "", revealedWords: [] };
 
-  const items = JSON.parse(pending.quizItems!) as QuizItem[];
+  try {
+    return await gradePending(user, pending, text);
+  } catch (err) {
+    // Release the claim so a webhook retry can grade it.
+    await prisma.message
+      .update({ where: { id: pending.id }, data: { answered: false } })
+      .catch((e) => console.error("failed to release quiz claim", e));
+    throw err;
+  }
+}
+
+async function gradePending(user: User, pending: Message, text: string): Promise<ReplyResult> {
+  const items = parseQuizItems(pending.quizItems!);
   const graded = items.length > 0 ? await gradeAnswers(user.language, items, text) : [];
   const now = new Date();
+  const rtl = isRtl(user.language);
 
-  const feedbackLines: string[] = [];
+  // One block per item, one field per line (RTL script never shares a line with Latin text).
+  const blocks: string[][] = [];
+  const revealedWords: Word[] = [];
   for (let i = 0; i < items.length; i++) {
-    const card = await prisma.card.findUnique({ where: { id: items[i].cardId }, include: { word: true } });
-    if (card) {
-      await prisma.card.update({
-        where: { id: card.id },
-        data: review(card, graded[i].correct ? Rating.Good : Rating.Again, now),
-      });
+    const item = items[i];
+    const { correct, feedback } = graded[i];
+    const rating = correct ? Rating.Good : Rating.Again;
+    const mark = `${i + 1}. ${correct ? "✓" : "✗"}`;
+
+    if (item.type === "review") {
+      const card = await prisma.card.findUnique({ where: { id: item.cardId }, include: { word: true } });
+      if (card) await prisma.card.update({ where: { id: card.id }, data: review(card, rating, now) });
+      const word = card?.word;
+      if (!word) blocks.push(correct ? [`${mark} ${item.answer}`] : [`${mark} ${feedback}`, item.answer]);
+      else if (correct) blocks.push(headLines(mark, word, rtl));
+      else blocks.push([`${mark} ${feedback}`, ...termLines(word)]);
+      continue;
     }
-    const mark = graded[i].correct ? `${i + 1}. ✓` : `${i + 1}. ✗ ${graded[i].feedback}`;
-    if (card && isRtl(user.language)) {
-      feedbackLines.push(mark, card.word.term);
-      if (card.word.transliteration) feedbackLines.push(card.word.transliteration);
-    } else {
-      feedbackLines.push(`${mark} ${items[i].answer}`);
+
+    // Guess-first item: the reveal is the lesson. Create the card now (Good if
+    // guessed right, Again if not) so it comes back as a free-recall review.
+    const word = await prisma.word.findUnique({ where: { id: item.wordId } });
+    if (!word) {
+      blocks.push([`${mark} ${item.answer}`]);
+      continue;
     }
+    await prisma.card.upsert({
+      where: { userId_wordId: { userId: user.id, wordId: word.id } },
+      create: { userId: user.id, wordId: word.id, ...review(blankCard(user.id, word.id, now), rating, now) },
+      update: {},
+    });
+    blocks.push([...headLines(mark, word, rtl), `= ${word.translation}`, ...(await exampleLines(user.language, word))]);
+    revealedWords.push(word);
   }
 
   // Streak: increment once per local day.
@@ -240,7 +358,63 @@ export async function handleReply(user: User, text: string): Promise<string> {
     items.length > 0
       ? `${correctCount}/${items.length}${correctCount === items.length ? " 🎉" : ""}`
       : "Got it!";
-  return `${summary}\n${feedbackLines.join("\n")}`;
+  const multiLine = blocks.some((b) => b.length > 1);
+  return {
+    text: [summary, ...blocks.map((b) => b.join("\n"))].join(multiLine ? "\n\n" : "\n"),
+    revealedWords,
+  };
+}
+
+/** The latest quiz the user hasn't answered yet, if any. */
+export function findPendingQuiz(userId: string) {
+  return prisma.message.findFirst({
+    where: { userId, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** Parse persisted quiz items; entries from before `type` existed are reviews. */
+export function parseQuizItems(raw: string): QuizItem[] {
+  const parsed = JSON.parse(raw) as (QuizItem | Omit<ReviewQuizItem, "type">)[];
+  return parsed.map((item) => ("type" in item ? item : { type: "review", ...item }));
+}
+
+/** Term (and transliteration) on their own lines — never mixed with Latin text. */
+function termLines(word: Word): string[] {
+  return word.transliteration ? [word.term, word.transliteration] : [word.term];
+}
+
+/** `1. ✓ gracias` when the term is plain Latin script; otherwise mark, term and transliteration on separate lines. */
+function headLines(mark: string, word: Word, rtl: boolean): string[] {
+  return rtl || word.transliteration ? [mark, ...termLines(word)] : [`${mark} ${word.term}`];
+}
+
+/** Example sentence + English for the reveal; omitted (not fatal) if generation fails. */
+async function exampleLines(language: string, word: Word): Promise<string[]> {
+  try {
+    const { sentence, sentence_en } = await generateSentence(language, word.term, word.translation);
+    return [sentence, sentence_en];
+  } catch (err) {
+    console.error("generateSentence failed", { language, term: word.term, err });
+    return [];
+  }
+}
+
+function blankCard(userId: string, wordId: string, now: Date): Card {
+  return {
+    id: "",
+    userId,
+    wordId,
+    due: now,
+    stability: 0,
+    difficulty: 0,
+    reps: 0,
+    lapses: 0,
+    learningSteps: 0,
+    state: 0,
+    lastReview: null,
+    createdAt: now,
+  };
 }
 
 /** Called hourly by cron: send due lessons and periodically re-optimize cadence. */
