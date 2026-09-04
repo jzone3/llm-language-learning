@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import crypto from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { sendVerifyCode } from "@/lib/whatsapp";
@@ -33,27 +34,40 @@ export async function POST(request: NextRequest) {
   }
   const { phone, timezone, language } = parsed.data;
 
-  const existing = await prisma.user.findUnique({ where: { phone }, select: { verifyExpiresAt: true } });
-  const lastSentAt = existing?.verifyExpiresAt ? existing.verifyExpiresAt.getTime() - CODE_TTL_MS : 0;
-  if (Date.now() - lastSentAt < RESEND_COOLDOWN_MS) {
-    return Response.json(
-      { error: "A code was requested less than 30 seconds ago — wait a moment and try again." },
-      { status: 429 }
-    );
-  }
+  const cooldown = Response.json(
+    { error: "A code was requested less than 30 seconds ago — wait a moment and try again." },
+    { status: 429 }
+  );
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expires = new Date(Date.now() + CODE_TTL_MS);
-  const user = await prisma.user.upsert({
-    where: { phone },
-    create: { phone, timezone, language, verifyCode: code, verifyExpiresAt: expires },
-    update: { timezone, language, verifyCode: code, verifyExpiresAt: expires, verifyAttempts: 0, optedOut: false },
-  });
+  const now = Date.now();
+  const code = String(crypto.randomInt(100000, 1000000));
+  const expires = new Date(now + CODE_TTL_MS);
+  const fields = { timezone, language, verifyCode: code, verifyExpiresAt: expires, verifyAttempts: 0, optedOut: false };
+
+  // Codes issued within the cooldown window expire after this instant.
+  const issuedBeforeCooldown = new Date(now + CODE_TTL_MS - RESEND_COOLDOWN_MS);
+
+  let user = await prisma.user.findUnique({ where: { phone }, select: { id: true } });
+  if (user) {
+    const { count } = await prisma.user.updateMany({
+      where: { id: user.id, OR: [{ verifyExpiresAt: null }, { verifyExpiresAt: { lte: issuedBeforeCooldown } }] },
+      data: fields,
+    });
+    if (count === 0) return cooldown;
+  } else {
+    try {
+      user = await prisma.user.create({ data: { phone, ...fields }, select: { id: true } });
+    } catch {
+      return cooldown;
+    }
+  }
 
   try {
     await sendVerifyCode({ userId: user.id, to: phone, code });
   } catch (err) {
     console.error("verify message failed", err);
+    // Undelivered code: release the cooldown so the user can retry immediately.
+    await prisma.user.update({ where: { id: user.id }, data: { verifyExpiresAt: issuedBeforeCooldown } });
     return Response.json(
       { error: "Couldn't reach that number on WhatsApp — double-check it and try again." },
       { status: 502 }

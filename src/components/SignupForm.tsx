@@ -245,6 +245,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           aria-valuemin={0}
           aria-valuemax={items.length}
           aria-valuenow={current}
+          aria-valuetext={`${current} of ${items.length} answered`}
           className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200"
         >
           <div
