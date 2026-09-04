@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import crypto from "crypto";
+import type { QuizItem } from "./engine";
 
 const GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
@@ -13,7 +14,7 @@ export async function sendWhatsApp(params: {
   to: string; // E.164, e.g. +14155551234
   body: string;
   kind: string;
-  quizItems?: { cardId: string; prompt: string; answer: string }[];
+  quizItems?: QuizItem[];
 }) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {

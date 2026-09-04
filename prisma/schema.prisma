@@ -76,7 +76,8 @@ model Message {
   direction String // "out" | "in"
   kind      String // "quiz" | "new_words" | "reply" | "verify" | "other"
   body      String
-  // For quiz messages: JSON array of { cardId, prompt, answer }
+  // For quiz messages: JSON array of QuizItem (src/lib/engine.ts) —
+  // { type: "review", cardId, prompt, answer } | { type: "new", wordId, prompt, answer, options, correctIndex }
   quizItems String?
   answered  Boolean  @default(false)
   createdAt DateTime @default(now())

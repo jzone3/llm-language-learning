@@ -1,13 +1,13 @@
 # VocabText
 
-Learn a language by answering one WhatsApp message a day. WhatsApp-only vocabulary learning (words, phrases, and slang) with real spaced repetition (FSRS), LLM-generated example sentences, lenient LLM grading of text or voice-note replies, a website placement test, and an adaptive send cadence.
+Learn a language by answering one WhatsApp message a day. WhatsApp-only vocabulary learning (words, phrases, and slang) with real spaced repetition (FSRS), quiz-only daily messages (new words are introduced as guess-first questions — testing effect + pretesting effect), LLM-generated example sentences in the feedback, lenient LLM grading of text or voice-note replies, a website placement test, and an adaptive send cadence.
 
 ## How it works
 
 1. User signs up on the landing page: pick a language (10 supported — Hebrew, Spanish, French, German, Italian, Portuguese, Japanese, Korean, Mandarin, Russian), enter a phone number, verify via a WhatsApp code.
 2. A quick placement quiz on the website: up to 10 multiple-choice questions, one at a time (pick the English meaning of items sampled across the frequency list, or skip if brand new). It sets the level (beginner/intermediate/advanced) and marks known items as already-learned cards so lessons never reteach them.
-3. Every morning (default 8am local) they get one WhatsApp message: a short quiz of due items (active recall) plus 1–2 new items — a curated mix of high-frequency words, everyday phrases, and common slang, with transliteration for non-Latin scripts.
-4. They reply by text **or voice note** (transcribed with Whisper, then graded the same way); an LLM grades leniently (typos/accents/transliterations/synonyms OK), FSRS reschedules each item, and the reply includes instant feedback + streak.
+3. Every morning (default 8am local) they get one WhatsApp message that is **only questions** — no lesson block. Due items are free-recall (`"thank you" in Hebrew?`); 1–2 new items (a curated mix of high-frequency words, everyday phrases, and common slang) are guess-first: the word is shown (transliteration on its own line for non-Latin scripts) with three English meanings, `a) hello  b) bread  c) water`. Wrong guesses are the point — pretesting makes the reveal stick.
+4. They reply by text **or voice note** (transcribed with Whisper, then graded the same way); an LLM grades leniently (typos/accents/transliterations/synonyms OK; letter, option text, or paraphrase for new items), FSRS reschedules each item, and the reply is the study material: per item a ✓/✗, the word + transliteration, and for new items the meaning plus an example sentence. New items become real cards at grading (FSRS `Good` if guessed right, `Again` if not) so they return as free-recall reviews. WhatsApp keeps the thread, so yesterday's feedback sits right above today's quiz.
 5. Cadence rules:
    - One morning message per day to start.
    - A second (afternoon) message unlocks only after a 4+ day reply streak.
