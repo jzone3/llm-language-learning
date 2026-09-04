@@ -74,12 +74,16 @@ export function LanguageSelect({ value, onChange, disabled }: Props) {
     }
   }
 
+  function isTypeaheadKey(e: React.KeyboardEvent) {
+    return e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey;
+  }
+
   function onTriggerKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
     if (disabled) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === " " || e.key === "Enter") {
       e.preventDefault();
       openList();
-    } else if (e.key.length === 1 && /\S/.test(e.key)) {
+    } else if (isTypeaheadKey(e)) {
       e.preventDefault();
       openList();
       jumpTo(e.key.toLowerCase(), e.timeStamp);
@@ -117,7 +121,7 @@ export function LanguageSelect({ value, onChange, disabled }: Props) {
         closeList(false);
         break;
       default:
-        if (e.key.length === 1 && /\S/.test(e.key)) {
+        if (isTypeaheadKey(e)) {
           e.preventDefault();
           jumpTo(e.key.toLowerCase(), e.timeStamp);
         }
