@@ -19,7 +19,9 @@ export async function POST(request: NextRequest) {
   if (!user?.verified || !user.placementToken || user.placementToken !== token) {
     return Response.json({ error: "Not authorized" }, { status: 403 });
   }
-  if (user.placementDone) return Response.json({ ok: true, level: user.level });
+  if (user.placementDone) {
+    return Response.json({ ok: true, level: user.level, sendHour: user.sendHour, language: user.language });
+  }
 
   // Multiple-choice: an answer is known only if the picked option matches the
   // word's translation exactly. Skipped questions count as unknown.
@@ -41,6 +43,9 @@ export async function POST(request: NextRequest) {
   const total = answers.length;
   const knownRatio = total > 0 ? knownWordIds.length / total : 0;
   const level = knownRatio >= 0.7 ? "advanced" : knownRatio >= 0.35 ? "intermediate" : "beginner";
+
+  const totalWords = await prisma.word.count({ where: { language: user.language } });
+  const queueCount = Math.max(0, totalWords - knownWordIds.length);
 
   const now = new Date();
   const graduatedDue = new Date(now.getTime() + 21 * 24 * 3600_000);
@@ -67,6 +72,7 @@ export async function POST(request: NextRequest) {
     data: { placementDone: true, level, placementToken: null },
   });
 
+  let firstLessonSent = false;
   try {
     await sendWhatsApp({
       userId: user.id,
@@ -75,9 +81,19 @@ export async function POST(request: NextRequest) {
       kind: "other",
     });
     await sendLesson(updated, { includeNewWords: true });
+    firstLessonSent = true;
   } catch (err) {
     console.error("first lesson send failed", err);
   }
 
-  return Response.json({ ok: true, level });
+  return Response.json({
+    ok: true,
+    level,
+    knownCount: knownWordIds.length,
+    totalAsked: total,
+    queueCount,
+    sendHour: updated.sendHour,
+    language: updated.language,
+    firstLessonSent,
+  });
 }

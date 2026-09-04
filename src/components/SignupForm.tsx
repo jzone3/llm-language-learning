@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { normalizePhone } from "@/lib/phone";
+import { SignupDone, type PlacementSummary } from "./SignupDone";
 
 type PlacementItem = { wordId: string; term: string; options: string[] };
 
@@ -49,7 +50,8 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
   const [items, setItems] = useState<PlacementItem[]>([]);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [current, setCurrent] = useState(0);
-  const [level, setLevel] = useState<string | null>(null);
+  const [summary, setSummary] = useState<PlacementSummary>({});
+  const [returning, setReturning] = useState(false);
   const [token, setToken] = useState("");
 
   async function post(url: string, body: unknown) {
@@ -95,13 +97,18 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
       const data = await post("/api/verify", { phone, code });
       setToken(data.placementToken ?? "");
       if (data.placementDone) {
+        setReturning(true);
         setStage("done");
       } else {
         const start = await post("/api/placement/start", { phone, token: data.placementToken });
         setItems(start.items);
-        setStage(start.items.length > 0 ? "placement" : "done");
-        if (start.items.length === 0)
-          await post("/api/placement/submit", { phone, token: data.placementToken, answers: [] });
+        if (start.items.length > 0) {
+          setStage("placement");
+        } else {
+          const done = await post("/api/placement/submit", { phone, token: data.placementToken, answers: [] });
+          setSummary(done);
+          setStage("done");
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -123,7 +130,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           ? []
           : items.map((it) => ({ wordId: it.wordId, response: answers[it.wordId] ?? "" })),
       });
-      setLevel(data.level);
+      setSummary(data);
       setStage("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -134,15 +141,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
   }
 
   if (stage === "done") {
-    return (
-      <div className="mt-10">
-        <h2 className="text-lg font-semibold">You&apos;re all set</h2>
-        <p className="mt-2 text-lg font-medium text-green-700">
-          🎉 You&apos;re in{level ? ` — starting at ${level} level` : ""}. Check WhatsApp for your
-          first lesson.
-        </p>
-      </div>
-    );
+    return <SignupDone summary={summary} returning={returning} />;
   }
 
   if (stage === "placement") {
