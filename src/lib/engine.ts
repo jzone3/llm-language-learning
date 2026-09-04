@@ -247,18 +247,11 @@ export type ReplyResult = {
 };
 
 /**
- * Handle an inbound reply: grade, update FSRS + streak, respond.
+ * Handle an inbound reply (already persisted by the webhook): grade, update FSRS + streak, respond.
  * Returns empty `text` when another delivery of the same reply already claimed the quiz.
  */
 export async function handleReply(user: User, text: string): Promise<ReplyResult> {
-  const pending = await prisma.message.findFirst({
-    where: { userId: user.id, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
-    orderBy: { createdAt: "desc" },
-  });
-
-  await prisma.message.create({
-    data: { userId: user.id, direction: "in", kind: "reply", body: text },
-  });
+  const pending = await findPendingQuiz(user.id);
 
   if (!pending) {
     return { text: "No quiz pending — your next words arrive tomorrow morning. 📚", revealedWords: [] };
@@ -346,6 +339,20 @@ async function gradePending(user: User, pending: Message, text: string): Promise
   };
 }
 
+/** The latest quiz the user hasn't answered yet, if any. */
+export function findPendingQuiz(userId: string) {
+  return prisma.message.findFirst({
+    where: { userId, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** Parse persisted quiz items; entries from before `type` existed are reviews. */
+export function parseQuizItems(raw: string): QuizItem[] {
+  const parsed = JSON.parse(raw) as (QuizItem | Omit<ReviewQuizItem, "type">)[];
+  return parsed.map((item) => ("type" in item ? item : { type: "review", ...item }));
+}
+
 /** Term (and transliteration) on their own lines — never mixed with Latin text. */
 function termLines(word: Word): string[] {
   return word.transliteration ? [word.term, word.transliteration] : [word.term];
@@ -382,12 +389,6 @@ function blankCard(userId: string, wordId: string, now: Date): Card {
     lastReview: null,
     createdAt: now,
   };
-}
-
-/** Parse persisted quiz items; entries from before `type` existed are reviews. */
-function parseQuizItems(raw: string): QuizItem[] {
-  const parsed = JSON.parse(raw) as (QuizItem | Omit<ReviewQuizItem, "type">)[];
-  return parsed.map((item) => ("type" in item ? item : { type: "review", ...item }));
 }
 
 /** Called hourly by cron: send due lessons and periodically re-optimize cadence. */

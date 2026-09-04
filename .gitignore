@@ -44,3 +44,4 @@ next-env.d.ts
 # local sqlite
 prisma/dev.db
 prisma/*.db*
+scripts/.voice-cache/

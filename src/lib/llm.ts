@@ -30,16 +30,39 @@ export async function generateSentence(language: string, term: string, translati
   );
 }
 
-/** Transcribe a voice-note reply (WhatsApp/MMS audio) in the target language. */
-export async function transcribeAudio(audio: ArrayBuffer, contentType: string, language: string): Promise<string> {
+/**
+ * Whisper prompt for a voice-note reply to a quiz: the words the learner is
+ * likely to say (target-language answers with their transliterations, option
+ * letters). Learners answer in the target language, English, or a mix, so the
+ * language is left to auto-detection and this prompt biases the vocabulary.
+ */
+export function transcriptionPrompt(language: string, items: QuizItem[]): string {
+  const name = LANGUAGE_NAMES[language] ?? language;
+  const answers = items.map((item) => item.answer);
+  const hasChoice = items.some((item) => item.type === "new");
+  return `${name} vocabulary quiz answers, spoken in ${name} or English: ${[...answers, ...(hasChoice ? ["a", "b", "c"] : [])].join(", ")}.`;
+}
+
+/** Unprompted, this model returns "" for silence/background noise, where whisper-1 invents "Thank you for watching". */
+const SPEECH_GATE_MODEL = "gpt-4o-mini-transcribe";
+
+/**
+ * Transcribe a voice-note reply (WhatsApp/MMS audio). No `language` is forced —
+ * learners answer in the target language, English, or both — and `prompt` (see
+ * `transcriptionPrompt`) biases Whisper toward the expected answers. Because a
+ * prompted Whisper hallucinates (or echoes the prompt) on non-speech audio, the
+ * clip is gated in parallel by an unprompted pass: returns "" when nothing was said.
+ */
+export async function transcribeAudio(audio: ArrayBuffer, contentType: string, prompt?: string): Promise<string> {
   const ext = contentType.includes("ogg") ? "ogg" : contentType.includes("mp4") ? "mp4" : contentType.includes("wav") ? "wav" : "mp3";
   const file = new File([audio], `reply.${ext}`, { type: contentType });
-  const res = await openai.audio.transcriptions.create({
-    model: process.env.OPENAI_TRANSCRIBE_MODEL ?? "whisper-1",
-    file,
-    language,
-  });
-  return res.text.trim();
+  const transcribe = async (model: string, p?: string) =>
+    (await openai.audio.transcriptions.create({ model, file, prompt: p, response_format: "json" })).text.trim();
+  const [heard, text] = await Promise.all([
+    transcribe(SPEECH_GATE_MODEL),
+    transcribe(process.env.OPENAI_TRANSCRIBE_MODEL ?? "whisper-1", prompt),
+  ]);
+  return heard ? text : "";
 }
 
 export type GradedAnswer = { correct: boolean; feedback: string };

@@ -2,7 +2,7 @@ import { prisma } from "./db";
 import crypto from "crypto";
 import type { QuizItem } from "./engine";
 
-const GRAPH_BASE = "https://graph.facebook.com/v21.0";
+const GRAPH_BASE = process.env.WHATSAPP_GRAPH_BASE ?? "https://graph.facebook.com/v21.0";
 
 function accessToken() {
   return process.env.WHATSAPP_ACCESS_TOKEN ?? "";
