@@ -1,6 +1,7 @@
-import type { User } from "@prisma/client";
+import type { User, Word } from "@prisma/client";
 import { prisma } from "./db";
 import { review, Rating } from "./fsrs";
+import { sendNewWordImages } from "./images";
 import { generateSentence, gradeAnswers, optimizeCadence, pickNextWords } from "./llm";
 import { sendWhatsApp } from "./whatsapp";
 import { LANGUAGE_NAMES, isRtl } from "./words";
@@ -57,6 +58,7 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
   }
 
   const newWordIds: string[] = [];
+  const introducedWords: Word[] = [];
   if (opts.includeNewWords) {
     const newWords = await selectNewWords(user);
     if (newWords.length > 0) {
@@ -73,6 +75,7 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
         lines.push(sentence);
         lines.push(sentence_en);
         newWordIds.push(w.id);
+        introducedWords.push(w);
       }
     }
   }
@@ -118,6 +121,8 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
       },
     });
   }
+
+  await sendNewWordImages(user, introducedWords);
   return message;
 }
 
