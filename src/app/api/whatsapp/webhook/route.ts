@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { findPendingQuiz, handleReply, parseQuizItems } from "@/lib/engine";
 import { sendWhatsApp, fetchWhatsAppMedia, validateWebhookSignature } from "@/lib/whatsapp";
@@ -83,15 +84,25 @@ async function handleInbound(message: InboundMessage) {
   const user = await prisma.user.findUnique({ where: { phone } });
   if (!user) return;
 
-  // Meta redelivers a message when it doesn't get a timely 200; never process a wamid twice.
-  if (await prisma.message.findUnique({ where: { waMessageId: message.id }, select: { id: true } })) return;
+  let body = message.type === "text" ? (message.text?.body ?? "").trim() : "";
+
+  // Meta redelivers a message when it doesn't get a timely 200. Inserting the inbound row first
+  // claims the wamid (unique), so a redelivery — even a concurrent one — is a no-op from here on.
+  let inbound: { id: string };
+  try {
+    inbound = await prisma.message.create({
+      data: { userId: user.id, direction: "in", kind: message.type === "text" || message.type === "audio" ? "reply" : message.type, body, waMessageId: message.id },
+      select: { id: true },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return;
+    throw err;
+  }
 
   if (UNREADABLE_TYPES.has(message.type)) {
     await reply(user.id, phone, "I can only read text or a voice note — reply with your answers that way. 🎙️");
     return;
   }
-
-  let body = message.type === "text" ? (message.text?.body ?? "").trim() : "";
 
   // Voice-note reply: transcribe, then grade the transcript like a text answer.
   if (!body && message.type === "audio" && message.audio?.id) {
@@ -99,6 +110,7 @@ async function handleInbound(message: InboundMessage) {
       const [media, pending] = await Promise.all([fetchWhatsAppMedia(message.audio.id), findPendingQuiz(user.id)]);
       const prompt = pending?.quizItems ? transcriptionPrompt(user.language, parseQuizItems(pending.quizItems)) : undefined;
       body = await transcribeAudio(media.data, media.contentType, prompt);
+      await prisma.message.update({ where: { id: inbound.id }, data: { body } });
     } catch (err) {
       console.error("voice transcription failed", err);
       await reply(user.id, phone, "Couldn't process that voice note — try again or reply by text. 🎙️");
@@ -124,7 +136,7 @@ async function handleInbound(message: InboundMessage) {
     return;
   }
 
-  const feedback = await handleReply(user, body, message.id);
+  const feedback = await handleReply(user, body);
   await reply(user.id, phone, feedback);
 }
 

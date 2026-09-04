@@ -240,13 +240,9 @@ export async function refreshWordQueue(user: User) {
   }
 }
 
-/** Handle an inbound reply: grade, update FSRS + streak, respond. */
-export async function handleReply(user: User, text: string, waMessageId?: string): Promise<string> {
+/** Handle an inbound reply (already persisted by the webhook): grade, update FSRS + streak, respond. */
+export async function handleReply(user: User, text: string): Promise<string> {
   const pending = await findPendingQuiz(user.id);
-
-  await prisma.message.create({
-    data: { userId: user.id, direction: "in", kind: "reply", body: text, waMessageId },
-  });
 
   if (!pending) {
     return "No quiz pending — your next words arrive tomorrow morning. 📚";
