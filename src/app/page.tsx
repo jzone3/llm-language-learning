@@ -60,7 +60,7 @@ function Hebrew({ children }: { children: React.ReactNode }) {
 
 export default function Home() {
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-20">
+    <main className="mx-auto w-full max-w-2xl flex-1 px-5 py-12 sm:px-6 sm:py-20">
       <p className="text-sm font-medium tracking-widest uppercase text-neutral-600">{SITE_NAME}</p>
       <SignupForm
         hero={

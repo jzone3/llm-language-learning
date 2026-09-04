@@ -5,6 +5,15 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  color-scheme: light;
+  background: #fafaf7;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
 @layer base {
   button:not(:disabled) {
     cursor: pointer;

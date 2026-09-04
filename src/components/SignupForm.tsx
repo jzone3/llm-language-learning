@@ -253,7 +253,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
             style={{ width: `${(current / items.length) * 100}%` }}
           />
         </div>
-        <p id="placement-term" lang={language} dir={rtl ? "rtl" : "ltr"} className="text-3xl font-semibold">
+        <p id="placement-term" lang={language} dir={rtl ? "rtl" : "ltr"} className="break-words py-2 text-center text-4xl font-semibold leading-tight">
           {item.term}
         </p>
         <div className="relative">
@@ -271,7 +271,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
                 type="button"
                 disabled={loading}
                 onClick={() => answer(option)}
-                className="rounded-xl border border-neutral-300 bg-white px-4 py-3 text-left text-base hover:border-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50"
+                className="min-h-11 rounded-xl border border-neutral-300 bg-white px-4 py-3 text-left text-base break-words hover:border-neutral-900 active:border-neutral-900 active:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50"
               >
                 {option}
               </button>
@@ -280,7 +280,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
               type="button"
               disabled={loading}
               onClick={() => answer("")}
-              className="col-span-2 rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-center text-base text-neutral-600 hover:border-neutral-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50"
+              className="col-span-2 min-h-11 rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-center text-base text-neutral-600 hover:border-neutral-500 active:border-neutral-500 active:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50"
             >
               I don&apos;t know
             </button>
@@ -301,7 +301,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           type="button"
           disabled={loading}
           onClick={() => submitPlacement(true)}
-          className="w-fit rounded-sm text-sm text-neutral-600 underline hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50 disabled:no-underline"
+          className="-my-2 min-h-11 w-fit rounded-sm py-2 text-sm text-neutral-600 underline hover:text-neutral-900 active:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50 disabled:no-underline"
         >
           <ButtonLabel loading={skipping} busyLabel="Skipping…">
             I&apos;m brand new — skip the quiz
@@ -338,6 +338,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           type="tel"
           required
           autoComplete="tel"
+          enterKeyHint="send"
           aria-label="WhatsApp phone number"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "signup-error" : "signup-consent"}
@@ -352,7 +353,9 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           required
           autoFocus
           inputMode="numeric"
+          pattern="[0-9]*"
           autoComplete="one-time-code"
+          enterKeyHint="go"
           maxLength={6}
           aria-label="6-digit verification code"
           aria-invalid={error ? true : undefined}
@@ -366,7 +369,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
       <button
         type="submit"
         disabled={loading}
-        className="rounded-xl bg-neutral-900 px-6 py-3 text-base font-medium text-white hover:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50"
+        className="rounded-xl bg-neutral-900 px-6 py-3 text-base font-medium text-white hover:bg-neutral-700 active:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 disabled:opacity-50"
       >
         <ButtonLabel loading={loading} busyLabel={stage === "phone" ? "Sending…" : "Verifying…"}>
           {stage === "phone" ? "Message me" : "Verify"}
