@@ -5,6 +5,38 @@ import { LANGUAGES } from "@/lib/words";
 
 type PlacementItem = { wordId: string; term: string; options: string[] };
 
+function Spinner() {
+  return (
+    <svg
+      className="size-4 shrink-0 animate-spin"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+      <path
+        className="opacity-90"
+        d="M12 2a10 10 0 0 1 10 10"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ButtonLabel({ loading, busyLabel, children }: { loading: boolean; busyLabel: string; children: React.ReactNode }) {
+  return (
+    <span className="grid place-items-center [&>*]:col-start-1 [&>*]:row-start-1">
+      <span className={`inline-flex items-center gap-2 ${loading ? "invisible" : ""}`}>{children}</span>
+      <span className={`inline-flex items-center gap-2 ${loading ? "" : "invisible"}`}>
+        <Spinner />
+        {busyLabel}
+      </span>
+    </span>
+  );
+}
+
 export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: React.ReactNode }) {
   const [phone, setPhone] = useState("");
   const [language, setLanguage] = useState("he");
@@ -12,6 +44,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
   const [stage, setStage] = useState<"phone" | "code" | "placement" | "done">("phone");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const [items, setItems] = useState<PlacementItem[]>([]);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [current, setCurrent] = useState(0);
@@ -73,6 +106,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
   async function submitPlacement(skip: boolean, finalResponses?: Record<string, string>) {
     setError(null);
     setLoading(true);
+    setSkipping(skip);
     try {
       const answers = finalResponses ?? responses;
       const data = await post("/api/placement/submit", {
@@ -88,6 +122,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
+      setSkipping(false);
     }
   }
 
@@ -105,6 +140,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
 
   if (stage === "placement") {
     const item = items[current];
+    const grading = loading && !skipping;
 
     function answer(option: string) {
       const next = { ...responses, [item.wordId]: option };
@@ -131,34 +167,52 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           />
         </div>
         <p className="text-3xl font-semibold">{item.term}</p>
-        <div className="grid grid-cols-2 gap-2">
-          {item.options.map((option) => (
+        <div className="relative">
+          <div
+            className={`grid grid-cols-2 gap-2 transition-opacity ${grading ? "pointer-events-none opacity-50" : ""}`}
+            aria-busy={grading}
+          >
+            {item.options.map((option) => (
+              <button
+                key={option}
+                type="button"
+                disabled={loading}
+                onClick={() => answer(option)}
+                className="rounded-xl border border-neutral-300 bg-white px-4 py-3 text-left text-base hover:border-neutral-900 disabled:opacity-50"
+              >
+                {option}
+              </button>
+            ))}
             <button
-              key={option}
               type="button"
               disabled={loading}
-              onClick={() => answer(option)}
-              className="rounded-xl border border-neutral-300 bg-white px-4 py-3 text-left text-base hover:border-neutral-900 disabled:opacity-50"
+              onClick={() => answer("")}
+              className="col-span-2 rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-center text-base text-neutral-500 hover:border-neutral-500 disabled:opacity-50"
             >
-              {option}
+              I don&apos;t know
             </button>
-          ))}
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => answer("")}
-            className="col-span-2 rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-center text-base text-neutral-500 hover:border-neutral-500 disabled:opacity-50"
-          >
-            I don&apos;t know
-          </button>
+          </div>
+          {grading && (
+            <div
+              role="status"
+              className="absolute inset-0 flex items-center justify-center"
+            >
+              <span className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-sm">
+                <Spinner />
+                Grading…
+              </span>
+            </div>
+          )}
         </div>
         <button
           type="button"
           disabled={loading}
           onClick={() => submitPlacement(true)}
-          className="w-fit text-sm text-neutral-500 underline hover:text-neutral-700 disabled:opacity-50"
+          className="w-fit text-sm text-neutral-500 underline hover:text-neutral-700 disabled:opacity-50 disabled:no-underline"
         >
-          {loading ? "..." : "I'm brand new — skip the quiz"}
+          <ButtonLabel loading={skipping} busyLabel="Skipping…">
+            I&apos;m brand new — skip the quiz
+          </ButtonLabel>
         </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
@@ -215,7 +269,9 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
         disabled={loading}
         className="rounded-xl bg-neutral-900 px-6 py-3 text-base font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
       >
-        {loading ? "..." : stage === "phone" ? "Message me" : "Verify"}
+        <ButtonLabel loading={loading} busyLabel={stage === "phone" ? "Sending…" : "Verifying…"}>
+          {stage === "phone" ? "Message me" : "Verify"}
+        </ButtonLabel>
       </button>
       </div>
       {stage === "phone" && (
