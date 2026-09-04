@@ -4,6 +4,9 @@ import { prisma } from "@/lib/db";
 import { sendLesson } from "@/lib/engine";
 import { sendWhatsApp } from "@/lib/whatsapp";
 
+// first lesson may generate word images (~10s each, in parallel) before responding
+export const maxDuration = 60;
+
 const bodySchema = z.object({
   phone: z.string(),
   token: z.string().min(1),

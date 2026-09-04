@@ -68,6 +68,9 @@ export async function generateWordImage(word: ImageWord): Promise<{ data: Buffer
 export async function getOrCreateWordImageUrl(word: Word): Promise<string> {
   if (word.imageUrl) return word.imageUrl;
 
+  const fresh = await prisma.word.findUnique({ where: { id: word.id }, select: { imageUrl: true } });
+  if (fresh?.imageUrl) return fresh.imageUrl;
+
   const { data, contentType } = await generateWordImage(word);
   const ext = contentType === "image/png" ? "png" : "jpg";
   const blob = await put(`word-images/${word.language}/${word.id}.${ext}`, data, {
