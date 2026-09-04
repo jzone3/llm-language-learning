@@ -3,9 +3,22 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { sendVerifyCode } from "@/lib/whatsapp";
 import { LANGUAGES } from "@/lib/words";
+import { normalizePhone } from "@/lib/phone";
 
 const bodySchema = z.object({
-  phone: z.string().regex(/^\+[1-9]\d{7,14}$/, "Use E.164 format, e.g. +14155551234"),
+  phone: z
+    .string()
+    .transform((s, ctx) => {
+      const normalized = normalizePhone(s);
+      if (!normalized) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Enter a valid phone number, e.g. (415) 555-1234 or +44 20 7946 0958",
+        });
+        return z.NEVER;
+      }
+      return normalized;
+    }),
   timezone: z.string().min(1),
   language: z.enum(LANGUAGES.map((l) => l.code) as [string, ...string[]]),
 });

@@ -24,6 +24,15 @@ type InboundMessage = {
   audio?: { id: string; mime_type?: string };
 };
 
+type StatusUpdate = {
+  id: string;
+  status: string; // sent | delivered | read | failed
+  recipient_id?: string;
+  errors?: { code: number; title?: string; message?: string; error_data?: { details?: string } }[];
+};
+
+type ChangeValue = { messages?: InboundMessage[]; statuses?: StatusUpdate[] };
+
 export async function POST(request: NextRequest) {
   const raw = await request.text();
 
@@ -40,9 +49,18 @@ export async function POST(request: NextRequest) {
     return new Response("Bad request", { status: 400 });
   }
 
-  const entries = (payload as { entry?: { changes?: { value?: { messages?: InboundMessage[] } }[] }[] }).entry ?? [];
+  const entries = (payload as { entry?: { changes?: { value?: ChangeValue }[] }[] }).entry ?? [];
   for (const entry of entries) {
     for (const change of entry.changes ?? []) {
+      for (const status of change.value?.statuses ?? []) {
+        if (status.status === "failed") {
+          console.error("whatsapp delivery failed", {
+            messageId: status.id,
+            recipient: status.recipient_id,
+            errors: status.errors,
+          });
+        }
+      }
       for (const message of change.value?.messages ?? []) {
         try {
           await handleInbound(message);
