@@ -109,12 +109,15 @@ export type TemplateComponent =
  * Make a string safe to use as a template parameter value. The Cloud API rejects
  * parameters containing newlines, tabs, or more than 4 consecutive spaces
  * ("Param text cannot have new-line/tab characters or more than 4 consecutive spaces").
+ * Each original line is wrapped in a Unicode bidi isolate (FSI…PDI) so RTL terms and
+ * Latin text keep their visual order once they share a line.
  */
 export function templateParamText(text: string, lineSeparator = " | "): string {
   return text
     .split(/\r?\n/)
     .map((line) => line.replace(/\t/g, " ").replace(/ {2,}/g, " ").trim())
     .filter((line) => line.length > 0)
+    .map((line) => `\u2068${line}\u2069`)
     .join(lineSeparator);
 }
 
