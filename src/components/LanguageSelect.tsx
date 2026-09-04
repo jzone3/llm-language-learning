@@ -25,6 +25,7 @@ export function LanguageSelect({ value, onChange, disabled }: Props) {
 
   function openList() {
     if (disabled) return;
+    typeahead.current = { query: "", at: 0 };
     setActive(Math.max(0, LANGUAGES.findIndex((l) => l.code === value)));
     setOpen(true);
   }
