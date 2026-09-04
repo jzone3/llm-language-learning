@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     await sendWhatsApp({
       userId: user.id,
       to: user.phone,
-      body: `🎉 You're in! Level: ${level}. Here's your first lesson — reply to tomorrow morning's quiz to build your streak. You can answer by text or voice note.`,
+      body: `🎉 You're in! Level: ${level}. Here's your first quiz — reply by text or voice note, and the feedback teaches you each word. Tomorrow morning's quiz builds your streak.`,
       kind: "other",
     });
     await sendLesson(updated, { includeNewWords: true });

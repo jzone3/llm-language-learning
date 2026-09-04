@@ -234,7 +234,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
     return (
       <div className="mt-10 flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Step 2 of 2: Quick level check</h2>
+          <h1 className="text-lg font-semibold">Step 2 of 2: Quick level check</h1>
           <p id="placement-progress" className="text-sm text-neutral-600" aria-live="polite">
             Question {current + 1} of {items.length} — what does this mean in English?
           </p>
@@ -320,7 +320,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
       {stage === "phone" && hero}
       {stage === "code" && (
         <div className="mt-10">
-          <h2 className="text-lg font-semibold">Step 1 of 2: Verify your number</h2>
+          <h1 className="text-lg font-semibold">Step 1 of 2: Verify your number</h1>
           <p className="text-sm text-neutral-600">
             Enter the 6-digit code we just sent to <span className="font-medium text-neutral-900">{phone}</span>{" "}
             on WhatsApp. It expires in 10 minutes.

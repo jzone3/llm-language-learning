@@ -6,7 +6,7 @@ const FEATURES = [
   { icon: "🎙️", text: "Answer by text or voice note. Grading is lenient about typos, accents, and transliteration." },
   {
     icon: "🧠",
-    text: "The feedback is the lesson: after every answer you get the word, how to say it, and an example sentence.",
+    text: "The feedback does the teaching: after every answer you get the word, how to say it, and an example sentence.",
   },
   { icon: "🔁", text: "Spaced repetition (FSRS) brings each word back right before you'd forget it." },
   {
@@ -52,7 +52,7 @@ function Bubble({
 
 function Hebrew({ children }: { children: React.ReactNode }) {
   return (
-    <span lang="he" dir="rtl" className="block text-right">
+    <span lang="he" dir="rtl" className="block text-left">
       {children}
     </span>
   );

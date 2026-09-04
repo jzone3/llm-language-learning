@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const lastSentAt = existing?.verifyExpiresAt ? existing.verifyExpiresAt.getTime() - CODE_TTL_MS : 0;
   if (Date.now() - lastSentAt < RESEND_COOLDOWN_MS) {
     return Response.json(
-      { error: "We just sent you a code — give it 30 seconds before requesting another." },
+      { error: "A code was requested less than 30 seconds ago — wait a moment and try again." },
       { status: 429 }
     );
   }
@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
     await sendVerifyCode({ userId: user.id, to: phone, code });
   } catch (err) {
     console.error("verify message failed", err);
-    await prisma.user.update({ where: { id: user.id }, data: { verifyCode: null, verifyExpiresAt: null } });
     return Response.json(
       { error: "Couldn't reach that number on WhatsApp — double-check it and try again." },
       { status: 502 }

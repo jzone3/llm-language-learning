@@ -25,9 +25,9 @@ function formatSendTime(sendHour: number) {
 function Stat({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-wider text-neutral-400">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold leading-tight">{value}</p>
-      <p className="mt-1 text-sm text-neutral-500">{detail}</p>
+      <p className="mt-1 text-sm text-neutral-600">{detail}</p>
     </div>
   );
 }
@@ -44,7 +44,7 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
     stats.push({
       label: "Your level",
       value: level.charAt(0).toUpperCase() + level.slice(1),
-      detail: LEVEL_BLURB[level] ?? "Sets the starting point for your lessons.",
+      detail: LEVEL_BLURB[level] ?? "Sets the starting point for your quizzes.",
     });
   }
   if (totalAsked !== undefined && totalAsked > 0 && knownCount !== undefined) {
@@ -53,8 +53,8 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
       value: `${knownCount} of ${totalAsked}`,
       detail:
         knownCount > 0
-          ? "Saved as mature cards — you won't be retaught them."
-          : "No problem — every word will be introduced properly.",
+          ? "Saved as known — they won't show up as new words."
+          : "No problem — every word will be introduced in a quiz first.",
     });
   }
   if (queueCount !== undefined) {
@@ -69,13 +69,13 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
   const steps = [
     {
       icon: "☀️",
-      title: "One message every morning",
-      body: `${morning}: a short quiz of up to 4 words due for review, plus a couple of new words or phrases with example sentences.`,
+      title: "One quiz every morning",
+      body: `${morning}: a short numbered quiz — up to 4 words due for review, plus a couple of new words to guess from a/b/c choices.`,
     },
     {
       icon: "💬",
       title: "Reply by text or voice note",
-      body: "Graded instantly and leniently — typos, missing accents, transliterations, and close synonyms all count. You get per-word feedback and a score.",
+      body: "Graded instantly and leniently — typos, missing accents, transliterations, and close synonyms all count. The feedback is the study material: each word with its transliteration and an example sentence.",
     },
     {
       icon: "🔁",
@@ -92,19 +92,19 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
   return (
     <div className="mt-10 flex flex-col gap-8">
       <div>
-        <h2 className="text-2xl sm:text-3xl font-semibold leading-tight tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-semibold leading-tight tracking-tight">
           {returning
             ? "👋 Welcome back — you're already set up."
             : deliveryFailed
-              ? "🎉 You're all set — your first lesson is on its way."
-              : "🎉 Check WhatsApp — your first lesson just landed."}
-        </h2>
+              ? "🎉 You're all set — your first quiz is on its way."
+              : "🎉 Check WhatsApp — your first quiz just landed."}
+        </h1>
         <p className="mt-3 text-neutral-600">
           {returning
-            ? "Your lessons keep arriving on WhatsApp every morning. Reply to the next one to keep your streak going."
+            ? "Your quizzes keep arriving on WhatsApp every morning. Reply to the next one to keep your streak going."
             : deliveryFailed
-              ? `We couldn't reach your WhatsApp just now, so your first lesson will arrive with your next morning quiz (~${sendTime}). Make sure this number can receive WhatsApp messages.`
-              : "Read through the new words, then reply to tomorrow morning's quiz to start your streak. That's the whole routine."}
+              ? `We couldn't reach your WhatsApp just now, so your first quiz will arrive at your next morning slot (~${sendTime}). Make sure this number can receive WhatsApp messages.`
+              : "Reply to it by text or voice note — the feedback teaches you each word. Tomorrow morning's quiz starts your streak."}
         </p>
       </div>
 
@@ -114,10 +114,10 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
             <Stat key={s.label} {...s} />
           ))}
           <div className="rounded-xl border border-neutral-200 bg-white p-4 sm:col-span-full">
-            <p className="text-xs font-medium uppercase tracking-wider text-neutral-400">Your schedule</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">Your schedule</p>
             <p className="mt-1 text-2xl font-semibold leading-tight">Daily · ~{sendTime}</p>
-            <p className="mt-1 text-sm text-neutral-500">
-              First lesson:{" "}
+            <p className="mt-1 text-sm text-neutral-600">
+              First quiz:{" "}
               <span className="text-neutral-900">{deliveryFailed ? `next ~${sendTime}` : "sent now"}</span> · Next
               quiz: tomorrow ~{sendTime}
             </p>
@@ -126,7 +126,7 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
       )}
 
       <section>
-        <p className="text-sm font-medium tracking-widest uppercase text-neutral-400">How it works</p>
+        <h2 className="text-sm font-medium tracking-widest uppercase text-neutral-600">How it works</h2>
         <ol className="mt-4 flex flex-col gap-3">
           {steps.map((step, i) => (
             <li key={step.title} className="flex gap-4 rounded-xl border border-neutral-200 bg-white p-4">
@@ -135,7 +135,7 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
               </div>
               <div>
                 <p className="font-medium">
-                  <span className="mr-2 text-neutral-400">{i + 1}.</span>
+                  <span className="mr-2 text-neutral-500">{i + 1}.</span>
                   {step.title}
                 </p>
                 <p className="mt-1 text-sm text-neutral-600 leading-relaxed">{step.body}</p>
