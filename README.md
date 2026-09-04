@@ -44,3 +44,9 @@ npm run dev
 - Business-initiated sends outside the 24h reply window require an approved WhatsApp message template (Meta business verification needed). The daily lesson will need a template once users stop replying within 24h; user-initiated replies keep the window open.
 - The first 1,000 service conversations per month are free on the Cloud API.
 - Deploy: Vercel project linked to this repo with a Neon Postgres store attached (injects `DATABASE_URL` / `DATABASE_URL_UNPOOLED`); `vercel.json` runs `prisma migrate deploy` and the idempotent word-list seed during build, so edits to `src/lib/words.ts` ship on the next deploy. Set `OPENAI_API_KEY`, `WHATSAPP_*`, `CRON_SECRET` as project env vars. Deployment protection must be off so Meta can reach the webhook.
+
+### Launch checklist (Meta Live mode)
+
+- Legal pages ship at `/privacy`, `/terms`, and `/data-deletion` (linked from every page's footer) — Meta requires the privacy policy and data-deletion URLs in the app settings before Live mode. Before publishing, set `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_CONTACT_EMAIL`, and `NEXT_PUBLIC_LEGAL_ENTITY` (see `.env.example`) so the policy names the right domain, contact, and legal entity, and review the wording in `src/app/(legal)/`.
+- Share metadata (Open Graph / Twitter card, generated `/opengraph-image`, icons, `robots.txt`, `sitemap.xml`) is driven by `src/lib/site.ts`.
+- Users opt out by replying `STOP` (and back in with `START`); deletion requests are handled by email per `/data-deletion`.
