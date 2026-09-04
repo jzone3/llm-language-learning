@@ -45,6 +45,43 @@ export async function sendWhatsApp(params: {
   });
 }
 
+/** Send a WhatsApp image message (public HTTPS jpeg/png URL, ≤5MB) with a caption and log it. */
+export async function sendWhatsAppImage(params: {
+  userId: string;
+  to: string;
+  imageUrl: string;
+  caption: string;
+  kind: string;
+}) {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: params.to.replace(/^\+/, ""),
+      type: "image",
+      image: { link: params.imageUrl, caption: params.caption },
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`WhatsApp image send failed: ${res.status} ${detail}`);
+  }
+  return prisma.message.create({
+    data: {
+      userId: params.userId,
+      direction: "out",
+      kind: params.kind,
+      body: params.caption,
+      mediaUrl: params.imageUrl,
+    },
+  });
+}
+
 /**
  * Send the verification code via an approved authentication template when
  * WHATSAPP_VERIFY_TEMPLATE is set. Business-initiated messages to numbers with no

@@ -1,8 +1,12 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { handleReply } from "@/lib/engine";
+import { sendNewWordImages } from "@/lib/images";
 import { sendWhatsApp, fetchWhatsAppMedia, validateWebhookSignature } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/llm";
+
+// Image generation for revealed words runs after the 200 (see `after`) and needs headroom.
+export const maxDuration = 60;
 
 /** Meta webhook verification handshake. */
 export async function GET(request: NextRequest) {
@@ -112,8 +116,12 @@ async function handleInbound(message: InboundMessage) {
     return;
   }
 
-  const feedback = await handleReply(user, body);
+  const { text: feedback, revealedWords } = await handleReply(user, body);
   await reply(user.id, phone, feedback);
+  // A picture of the meaning would give away the guess-first question, so the
+  // illustration accompanies the reveal. Deferred past the response so Meta
+  // gets its 200 quickly and doesn't retry the webhook.
+  if (revealedWords.length > 0) after(() => sendNewWordImages(user, revealedWords));
 }
 
 async function reply(userId: string, to: string, body: string) {

@@ -173,7 +173,6 @@ export async function sendLesson(user: User, opts: { includeNewWords: boolean })
 
   // New words get no Card until the reply is graded (see handleReply), so an
   // unanswered quiz doesn't consume words the learner never engaged with.
-  // Per-new-word follow-ups after a confirmed send go here (`newWords`).
   return message;
 }
 
@@ -240,8 +239,15 @@ export async function refreshWordQueue(user: User) {
   }
 }
 
+export type ReplyResult = {
+  /** Feedback text to send back. */
+  text: string;
+  /** Words revealed for the first time in this reply (guess-first items); illustrate these after the text. */
+  revealedWords: Word[];
+};
+
 /** Handle an inbound reply: grade, update FSRS + streak, respond. */
-export async function handleReply(user: User, text: string): Promise<string> {
+export async function handleReply(user: User, text: string): Promise<ReplyResult> {
   const pending = await prisma.message.findFirst({
     where: { userId: user.id, direction: "out", kind: "quiz", answered: false, quizItems: { not: null } },
     orderBy: { createdAt: "desc" },
@@ -252,7 +258,7 @@ export async function handleReply(user: User, text: string): Promise<string> {
   });
 
   if (!pending) {
-    return "No quiz pending — your next words arrive tomorrow morning. 📚";
+    return { text: "No quiz pending — your next words arrive tomorrow morning. 📚", revealedWords: [] };
   }
 
   // Mark answered up front so a webhook retry can't re-grade the same quiz.
@@ -265,6 +271,7 @@ export async function handleReply(user: User, text: string): Promise<string> {
 
   // One block per item, one field per line (RTL script never shares a line with Latin text).
   const blocks: string[][] = [];
+  const revealedWords: Word[] = [];
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     const { correct, feedback } = graded[i];
@@ -294,6 +301,7 @@ export async function handleReply(user: User, text: string): Promise<string> {
       update: {},
     });
     blocks.push([...headLines(mark, word, rtl), `= ${word.translation}`, ...(await exampleLines(user.language, word))]);
+    revealedWords.push(word);
   }
 
   // Streak: increment once per local day.
@@ -313,7 +321,10 @@ export async function handleReply(user: User, text: string): Promise<string> {
       ? `${correctCount}/${items.length}${correctCount === items.length ? " 🎉" : ""}`
       : "Got it!";
   const multiLine = blocks.some((b) => b.length > 1);
-  return [summary, ...blocks.map((b) => b.join("\n"))].join(multiLine ? "\n\n" : "\n");
+  return {
+    text: [summary, ...blocks.map((b) => b.join("\n"))].join(multiLine ? "\n\n" : "\n"),
+    revealedWords,
+  };
 }
 
 /** Term (and transliteration) on their own lines — never mixed with Latin text. */
