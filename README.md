@@ -17,7 +17,7 @@ Learn a language by answering one WhatsApp message a day. WhatsApp-only vocabula
 ## Stack
 
 - Next.js (App Router) + Tailwind — landing page, placement test, API routes
-- Prisma + SQLite (swap datasource for prod)
+- Prisma + Postgres (Neon via Vercel Marketplace in prod; any Postgres locally, e.g. `docker run -e POSTGRES_PASSWORD=pg -p 5432:5432 postgres:16`)
 - Meta WhatsApp Cloud API — outbound messages (`src/lib/whatsapp.ts`) + inbound webhook (`/api/whatsapp/webhook`) with verify-token handshake and X-Hub-Signature-256 validation
 - OpenAI — sentence generation, grading, weekly word picking, cadence optimization, Whisper transcription
 - ts-fsrs — spaced-repetition scheduling
@@ -27,7 +27,7 @@ Learn a language by answering one WhatsApp message a day. WhatsApp-only vocabula
 
 ```bash
 npm install
-cp .env.example .env   # fill in keys
+cp .env.example .env   # fill in keys (DATABASE_URL must point at a Postgres DB)
 npx prisma migrate dev
 npx tsx prisma/seed.ts # seed all 10 language lists
 npm run dev
@@ -43,4 +43,4 @@ npm run dev
 
 - Business-initiated sends outside the 24h reply window require an approved WhatsApp message template (Meta business verification needed). The daily lesson will need a template once users stop replying within 24h; user-initiated replies keep the window open.
 - The first 1,000 service conversations per month are free on the Cloud API.
-- Swap the Prisma datasource to Postgres/Turso before deploying to serverless.
+- Deploy: Vercel project linked to this repo; `vercel.json` runs `prisma migrate deploy` during build. Set `DATABASE_URL`, `OPENAI_API_KEY`, `WHATSAPP_*`, `CRON_SECRET` as project env vars, then seed once with `npx tsx prisma/seed.ts` against the prod `DATABASE_URL`.
