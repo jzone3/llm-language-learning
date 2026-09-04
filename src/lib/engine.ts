@@ -73,14 +73,18 @@ function seededRandom(seed: string) {
  */
 export function buildOptions(word: Word, pool: Word[]): { options: string[]; correctIndex: number } {
   const rand = seededRandom(word.id);
-  const others = pool.filter((w) => w.id !== word.id && w.translation !== word.translation);
+  const meanings = new Set(splitMeanings(word.translation));
+  const others = pool.filter((w) => w.id !== word.id && !splitMeanings(w.translation).some((m) => meanings.has(m)));
   const sameKind = others.filter((w) => w.kind === word.kind);
   const candidates = [...(sameKind.length >= 2 ? sameKind : others)].sort((a, b) => a.rank - b.rank);
 
   const distractors: string[] = [];
   while (distractors.length < 2 && candidates.length > 0) {
     const [picked] = candidates.splice(Math.floor(rand() * candidates.length), 1);
-    if (!distractors.includes(picked.translation)) distractors.push(picked.translation);
+    const pickedMeanings = splitMeanings(picked.translation);
+    if (pickedMeanings.some((m) => meanings.has(m))) continue;
+    distractors.push(picked.translation);
+    pickedMeanings.forEach((m) => meanings.add(m));
   }
 
   const options = [word.translation, ...distractors];
@@ -89,6 +93,11 @@ export function buildOptions(word: Word, pool: Word[]): { options: string[]; cor
     [options[i], options[j]] = [options[j], options[i]];
   }
   return { options, correctIndex: options.indexOf(word.translation) };
+}
+
+/** "hello / peace" → ["hello", "peace"], lowercased. */
+function splitMeanings(translation: string): string[] {
+  return translation.split(" / ").map((m) => m.trim().toLowerCase());
 }
 
 /** Render the outbound quiz body: optional streak line, numbered questions, closing line. */
@@ -267,7 +276,7 @@ export async function handleReply(user: User, text: string): Promise<string> {
       if (card) await prisma.card.update({ where: { id: card.id }, data: review(card, rating, now) });
       const word = card?.word;
       if (!word) blocks.push(correct ? [`${mark} ${item.answer}`] : [`${mark} ${feedback}`, item.answer]);
-      else if (correct) blocks.push(rtl ? [mark, ...termLines(word)] : [`${mark} ${word.term}`]);
+      else if (correct) blocks.push(headLines(mark, word, rtl));
       else blocks.push([`${mark} ${feedback}`, ...termLines(word)]);
       continue;
     }
@@ -284,13 +293,7 @@ export async function handleReply(user: User, text: string): Promise<string> {
       create: { userId: user.id, wordId: word.id, ...review(blankCard(user.id, word.id, now), rating, now) },
       update: {},
     });
-    const { sentence, sentence_en } = await generateSentence(user.language, word.term, word.translation);
-    blocks.push([
-      ...(rtl ? [mark, ...termLines(word)] : [`${mark} ${word.term}`]),
-      `= ${word.translation}`,
-      sentence,
-      sentence_en,
-    ]);
+    blocks.push([...headLines(mark, word, rtl), `= ${word.translation}`, ...(await exampleLines(user.language, word))]);
   }
 
   // Streak: increment once per local day.
@@ -316,6 +319,22 @@ export async function handleReply(user: User, text: string): Promise<string> {
 /** Term (and transliteration) on their own lines — never mixed with Latin text. */
 function termLines(word: Word): string[] {
   return word.transliteration ? [word.term, word.transliteration] : [word.term];
+}
+
+/** `1. ✓ gracias` when the term is plain Latin script; otherwise mark, term and transliteration on separate lines. */
+function headLines(mark: string, word: Word, rtl: boolean): string[] {
+  return rtl || word.transliteration ? [mark, ...termLines(word)] : [`${mark} ${word.term}`];
+}
+
+/** Example sentence + English for the reveal; omitted (not fatal) if generation fails. */
+async function exampleLines(language: string, word: Word): Promise<string[]> {
+  try {
+    const { sentence, sentence_en } = await generateSentence(language, word.term, word.translation);
+    return [sentence, sentence_en];
+  } catch (err) {
+    console.error("generateSentence failed", { language, term: word.term, err });
+    return [];
+  }
 }
 
 function blankCard(userId: string, wordId: string, now: Date): Card {
