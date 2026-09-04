@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
     data: { placementDone: true, level, placementToken: null },
   });
 
+  let firstLessonSent = false;
   try {
     await sendWhatsApp({
       userId: user.id,
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
       kind: "other",
     });
     await sendLesson(updated, { includeNewWords: true });
+    firstLessonSent = true;
   } catch (err) {
     console.error("first lesson send failed", err);
   }
@@ -92,5 +94,6 @@ export async function POST(request: NextRequest) {
     queueCount,
     sendHour: updated.sendHour,
     language: updated.language,
+    firstLessonSent,
   });
 }

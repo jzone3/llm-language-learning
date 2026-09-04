@@ -7,6 +7,7 @@ export type PlacementSummary = {
   queueCount?: number;
   sendHour?: number;
   language?: string;
+  firstLessonSent?: boolean;
 };
 
 const LEVEL_BLURB: Record<string, string> = {
@@ -32,7 +33,8 @@ function Stat({ label, value, detail }: { label: string; value: string; detail: 
 }
 
 export function SignupDone({ summary, returning }: { summary: PlacementSummary; returning?: boolean }) {
-  const { level, knownCount, totalAsked, queueCount, sendHour, language } = summary;
+  const { level, knownCount, totalAsked, queueCount, sendHour, language, firstLessonSent } = summary;
+  const deliveryFailed = firstLessonSent === false;
   const sendTime = formatSendTime(sendHour ?? 8);
   const morning = sendHour !== undefined ? `Around ${sendTime}` : "Every morning";
   const languageName = language ? LANGUAGE_NAMES[language] ?? language : null;
@@ -91,12 +93,18 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
     <div className="mt-10 flex flex-col gap-8">
       <div>
         <h2 className="text-2xl sm:text-3xl font-semibold leading-tight tracking-tight">
-          {returning ? "👋 Welcome back — you're already set up." : "🎉 Check WhatsApp — your first lesson just landed."}
+          {returning
+            ? "👋 Welcome back — you're already set up."
+            : deliveryFailed
+              ? "🎉 You're all set — your first lesson is on its way."
+              : "🎉 Check WhatsApp — your first lesson just landed."}
         </h2>
         <p className="mt-3 text-neutral-600">
           {returning
             ? "Your lessons keep arriving on WhatsApp every morning. Reply to the next one to keep your streak going."
-            : "Read through the new words, then reply to tomorrow morning's quiz to start your streak. That's the whole routine."}
+            : deliveryFailed
+              ? `We couldn't reach your WhatsApp just now, so your first lesson will arrive with your next morning quiz (~${sendTime}). Make sure this number can receive WhatsApp messages.`
+              : "Read through the new words, then reply to tomorrow morning's quiz to start your streak. That's the whole routine."}
         </p>
       </div>
 
@@ -109,7 +117,9 @@ export function SignupDone({ summary, returning }: { summary: PlacementSummary; 
             <p className="text-xs font-medium uppercase tracking-wider text-neutral-400">Your schedule</p>
             <p className="mt-1 text-2xl font-semibold leading-tight">Daily · ~{sendTime}</p>
             <p className="mt-1 text-sm text-neutral-500">
-              First lesson: <span className="text-neutral-900">sent now</span> · Next quiz: tomorrow ~{sendTime}
+              First lesson:{" "}
+              <span className="text-neutral-900">{deliveryFailed ? `next ~${sendTime}` : "sent now"}</span> · Next
+              quiz: tomorrow ~{sendTime}
             </p>
           </div>
         </div>
