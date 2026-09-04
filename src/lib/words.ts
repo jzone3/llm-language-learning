@@ -28,6 +28,10 @@ export const LANGUAGE_NAMES: Record<string, string> = Object.fromEntries(
   LANGUAGES.map((l) => [l.code, l.name])
 );
 
+export function isRtl(code: string): boolean {
+  return LANGUAGES.some((l) => l.code === code && l.rtl === true);
+}
+
 const HEBREW: SeedWord[] = [
   { term: "שלום", translation: "hello / peace", transliteration: "shalom" },
   { term: "תודה", translation: "thank you", transliteration: "toda" },

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LanguageSelect } from "@/components/LanguageSelect";
+import { normalizePhone } from "@/lib/phone";
 
 type PlacementItem = { wordId: string; term: string; options: string[] };
 
@@ -32,10 +33,16 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
   async function submitPhone(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const normalized = normalizePhone(phone);
+    if (!normalized) {
+      setError("Enter a valid phone number, e.g. (415) 555-1234 or +44 20 7946 0958");
+      return;
+    }
+    setPhone(normalized);
     setLoading(true);
     try {
       await post("/api/signup", {
-        phone,
+        phone: normalized,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         language,
       });
@@ -185,7 +192,7 @@ export function SignupForm({ hero, demo }: { hero?: React.ReactNode; demo?: Reac
           required
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          placeholder="+1 415 555 1234"
+          placeholder="(415) 555-1234"
           className="flex-1 rounded-xl border border-neutral-300 bg-white px-4 py-3 text-base outline-none focus:border-neutral-900"
         />
       ) : (
